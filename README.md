@@ -15,6 +15,7 @@ Single-file game: open `index.html` in Chrome or Safari (double-click works offl
 | Gallery scroll | Mouse wheel / arrows / on-screen ▲▼ |
 | Start | Enter / Space on title |
 | Restart (after win) | R or Enter |
+| Reset collection | **P** anywhere (confirm popup; Space/Cancel to abort) |
 
 On touch devices, large on-screen buttons appear (← → Jump, Collection). Portrait and landscape both work — title screen notes you can use either. Tap title/win to start/restart; gallery supports swipe scroll and tap filters.
 
@@ -35,6 +36,8 @@ Open `index.html` (or host the file) on iOS Safari / Android Chrome. Viewport is
 - **Death**: gallery-style scrolled grid (rarity→name) with the lost babe crossed by a pen-stroke red X; owned count in header. Pit = full wipe + lose one babe.
 - **Win**: babes gained this run (scrollable row) + totals.
 - **Save**: `hbc_collection_v1` counts map; also writes `hbc_collection_v2` wrapper (v1 still loaded/migrated).
+- **Level 3 — Gacha Machine Demon**: neon rooftop run-in then arena lock. Boss HP 3 (stomp the crank). Attacks: pity beam (low = jump / high = stay down), coin spit, fake-pull minion walkers. Reward roll is Rare-or-better (10:2 rare:ultra).
+- **Collection reset**: **P** opens a confirm popup from any state (title, play, slot, gallery, death, win, congrats, boss); freezes the frame underneath and resumes on Space/Cancel. Gallery also has a Reset button. Wipe is safe mid-death / mid-roll (no stale babe refs).
 
 ## Files
 
