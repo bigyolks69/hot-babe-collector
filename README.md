@@ -37,6 +37,7 @@ Open `index.html` (or host the file) on iOS Safari / Android Chrome. Viewport is
 - **Win**: babes gained this run (scrollable row) + totals.
 - **Save**: `hbc_collection_v1` counts map; also writes `hbc_collection_v2` wrapper (v1 still loaded/migrated).
 - **Level 3 — Gacha Machine Demon**: neon rooftop run-in then arena lock. Boss HP 3 (stomp the crank). Attacks: pity beam (low = jump / high = stay down), coin spit, Mini Oni / Mochi Slime minions. After each crank hit the boss is stunned ~1.15s (cyan/white, no contact damage) before the next attack. Reward roll is Rare-or-better (10:2 rare:ultra).
+- **All-30 aura**: when every babe is owned (live unique count), a looping yellow Super Saiyan aura draws behind the hero (`art/vfx/aura/aura_fire_0..5.png`, 56×80 @ ~110 ms). Losing a unique on death turns it off until the set is complete again.
 - **Collection reset**: open the gallery (**C**) → **Reset collection** → confirm (Reset / Cancel). Clears babe counts, tray, and complete flag; keeps level progress and mute.
 
 ## Files

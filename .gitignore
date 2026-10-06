@@ -232,3 +232,13 @@ audio/**
 # Congrats celebration (Iris all-30 group pic)
 !art/ui/
 !art/ui/congrats_all30.jpg
+
+# Super Saiyan aura (all-30 unlock) — 6 loop frames only
+!art/vfx/
+!art/vfx/aura/
+!art/vfx/aura/aura_fire_0.png
+!art/vfx/aura/aura_fire_1.png
+!art/vfx/aura/aura_fire_2.png
+!art/vfx/aura/aura_fire_3.png
+!art/vfx/aura/aura_fire_4.png
+!art/vfx/aura/aura_fire_5.png

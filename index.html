@@ -317,9 +317,36 @@ function drawPlayerFallback() {
   ctx.fillRect(px + player.w - 7, py + player.h - 8, 5, 8 - leg);
 }
 
+// Super Saiyan aura — all-30 unique unlock (live count; turns off if a babe is lost)
+const AURA_W = 56, AURA_H = 80, AURA_FRAME_MS = 110;
+const AURA_FRAMES = [];
+for (let i = 0; i < 6; i++) {
+  const im = new Image();
+  im.onerror = () => console.warn("[HBC] aura frame failed: aura_fire_" + i);
+  im.src = "art/vfx/aura/aura_fire_" + i + ".png";
+  AURA_FRAMES.push(im);
+}
+function hasAllBabesAura() {
+  return ownedUniqueCount(collection) >= BABE_POOL.length;
+}
+function drawAura() {
+  if (!hasAllBabesAura()) return;
+  const im = AURA_FRAMES[Math.floor(performance.now() / AURA_FRAME_MS) % AURA_FRAMES.length];
+  if (!imgOk(im)) return;
+  // Bottom-center of aura ↔ bottom-center of hero (56×80 canvas; hero 32×48 inset at 12,24)
+  const cx = Math.floor(player.x + player.w / 2);
+  const by = Math.floor(player.y + player.h);
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.translate(cx, by);
+  if (player.facing < 0) ctx.scale(-1, 1);
+  ctx.drawImage(im, -Math.floor(AURA_W / 2), -AURA_H, AURA_W, AURA_H);
+  ctx.restore();
+}
 function drawPlayer() {
   // Invulnerability flash (also during death we still draw)
   if (state !== "dead" && state !== "dying" && player.flash > 0 && Math.floor(player.flash * 12) % 2 !== 0) return;
+  drawAura(); // behind the hero
   if (heroSprites.ready && drawHeroSprite()) return;
   drawPlayerFallback();
 }
@@ -4504,6 +4531,8 @@ window.__HBC = {
   getCongratsButton: () => { if (!congrats) return null; const b = congratsLayout().btn, r = canvas.getBoundingClientRect(), s = r.width / W;
     return { canvas: b, client: { x: r.left + b.x * s, y: r.top + b.y * s, w: b.w * s, h: b.h * s } }; },
   isCollectionComplete: () => collectionCompleteFlag,
+  hasAura: () => hasAllBabesAura(),
+  getAuraFrame: () => Math.floor(performance.now() / AURA_FRAME_MS) % 6,
   getRecent: () => recentBabes.slice(),
   getTrayIds: () => recentBabes.filter(id => (collection[id] || 0) > 0).slice(0, HUD_SLOTS).reverse(),
   getLevel: () => ({ num: levelNum, name: level.name, width: level.width, diff: level.diff, pits: level.pits,
