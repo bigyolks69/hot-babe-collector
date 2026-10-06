@@ -483,7 +483,6 @@ function playDeathCry() {
       cryAudio.startedAt = actx.currentTime;
       duckBgm(true);
       src.start(0);
-      console.log("[HBC] cry_death start (WebAudio)", { wallMs: wall, ctxT: cryAudio.startedAt, animT: 0 });
       return;
     }
   } catch (e) {
@@ -498,7 +497,6 @@ function playDeathCry() {
   duckBgm(true);
   const p = cryHtmlAudio.play();
   if (p && p.catch) p.catch(() => {});
-  console.log("[HBC] cry_death start (HTMLAudio)", { wallMs: wall, animT: 0 });
 }
 
 // ---------- Background music ----------
@@ -620,7 +618,6 @@ function maybeStartCryLoop() {
       cryGain.connect(masterGain || actx.destination);
       cryAudio.loopSource = src;
       src.start(0);
-      console.log("[HBC] cry_death_loop start (overflow)");
       return;
     }
   } catch (_) {}
@@ -922,7 +919,7 @@ function congratsBlocks(e) {
   return (congrats || performance.now() - congratsClosedAt < 300) && !(t && t.closest && t.closest("#muteBtn"));
 }
 function resetHit(clientX, clientY) {
-  if (!resetConfirm || !isTouch) return null;
+  if (!resetConfirm) return null;
   const { x, y } = canvasCoords(clientX, clientY);
   const L = resetConfirmLayout();
   const hit = (b) => x >= b.x - 8 && x <= b.x + b.w + 8 && y >= b.y - 8 && y <= b.y + b.h + 8;
@@ -1471,7 +1468,7 @@ const SECTIONS = {
       G(99, 8), P(109, 13, 5) ],
     picks: [[8, 13], [28, 9], [58, 5], [71, 9], [89, 9]],
     enemies: [
-      WK(10, 15, 2, 16, 60), WK(44, 15, 40, 50, 70), HP(34, 13, 33, 39, 40, 1, 0),
+      WK(14, 15, 10, 22, 60), WK(44, 15, 40, 50, 70), HP(34, 13, 33, 39, 40, 1, 0),
       WK(86, 15, 80, 94, 80), HP(70, 11, 69, 72, 30, 1, 0.5), WK(110, 13, 109, 113.875, 55), HP(102, 15, 99, 106, 35, 1, 1.2),
     ],
     cps: [2, 42, 82] },
@@ -1509,8 +1506,8 @@ const SECTIONS = {
       G(0, 18), P(6, 13, 3), P(11, 12, 3) ],
     picks: [[7, 11], [12, 10]], enemies: [], cps: [2] },
   // Boss arena (~1 screen / 30 tiles). Entrance CP; goal unlocks after defeat.
-  // Side ledges at y=13 (2 tiles / 64px) — within max jump ~2.73 tiles; old y=11 was unreachable.
-  bossArena: { w: 30, plats: [G(0, 30), P(4, 13, 3), P(23, 13, 3)],
+  // Side ledges at y=13 (2 tiles). P(15,13) sits by the crank for stomps.
+  bossArena: { w: 30, plats: [G(0, 30), P(8, 13, 3), P(15, 13, 3)],
     picks: [], enemies: [], cps: [1], goal: 26 },
 };
 
@@ -1790,14 +1787,13 @@ function dismissCongrats(force) {
   // Rolls earned meanwhile resume now
   if (!slot && slotQueue > 0) { slotQueue--; if (!beginSlotRoll()) slotQueue = 0; }
 }
-// Collection reset confirm (desktop P, or Reset button in the gallery on mobile)
+// Collection reset: gallery "Reset collection" button → confirm popup (no P key).
 // Wipes babe counts + tray order + complete flag; keeps level progress and mute.
 let resetConfirm = null; // { t } while the confirm popup is up
 let resetToast = null;   // { t, dur } brief "Collection reset" after confirming
 const RESET_CONFIRM_GUARD = 0.25; // second P ignored this long (key-repeat / double-fire)
 function canOpenResetConfirm() {
-  // P must work from EVERY state — title, play, slot, gallery, death, win, congrats, boss…
-  return !resetConfirm;
+  return !resetConfirm && state === "collection";
 }
 function openResetConfirm() {
   if (!canOpenResetConfirm()) return false;
@@ -1835,10 +1831,10 @@ function confirmResetCollection() {
   try { sfx.lose(); } catch (e) {}
 }
 function resetConfirmLayout() {
-  const pw = 560, ph = isTouch ? 210 : 180;
+  const pw = 560, ph = 220;
   const px = (W - pw) / 2, py = (H - ph) / 2;
-  const bw = isTouch ? 180 : 0, bh = isTouch ? 52 : 0, gap = 24;
-  const btnY = py + ph - bh - 24;
+  const bw = 180, bh = 52, gap = 24;
+  const btnY = py + ph - bh - 22;
   return {
     pw, ph, px, py,
     resetBtn: { x: W / 2 - bw - gap / 2, y: btnY, w: bw, h: bh },
@@ -1855,27 +1851,21 @@ function drawResetConfirm() {
   roundRect(px, py, pw, ph, 16); ctx.stroke();
   ctx.textAlign = "center";
   ctx.fillStyle = "#ffe66d"; ctx.font = "bold 22px sans-serif";
-  ctx.fillText("Reset babe collection?", W / 2, py + 48);
+  ctx.fillText("Reset your babe collection?", W / 2, py + 48);
   ctx.fillStyle = "#ffb0d0"; ctx.font = "15px sans-serif";
-  if (isTouch) {
-    ctx.fillText("This clears every babe you've collected.", W / 2, py + 84);
-    ctx.fillText("Level progress and mute stay as they are.", W / 2, py + 108);
-    // Reset / Cancel buttons
-    const drawBtn = (b, label, fill, stroke) => {
-      ctx.fillStyle = fill; roundRect(b.x, b.y, b.w, b.h, 12); ctx.fill();
-      ctx.strokeStyle = stroke; ctx.lineWidth = 2; roundRect(b.x, b.y, b.w, b.h, 12); ctx.stroke();
-      ctx.fillStyle = "#fff"; ctx.font = "bold 18px sans-serif";
-      ctx.textBaseline = "middle"; ctx.fillText(label, b.x + b.w / 2, b.y + b.h / 2 + 1);
-      ctx.textBaseline = "alphabetic";
-    };
-    drawBtn(L.resetBtn, "Reset", "#e0457f", "#ffe66d");
-    drawBtn(L.cancelBtn, "Cancel", "#3a2a50", "#aaa");
-  } else {
-    ctx.fillText("Press P again to reset your babe collection.", W / 2, py + 88);
-    ctx.fillText("Press Space to cancel.", W / 2, py + 114);
-    ctx.fillStyle = "#888"; ctx.font = "12px sans-serif";
-    ctx.fillText("Level progress and mute stay as they are.", W / 2, py + 148);
-  }
+  ctx.fillText("This clears every babe you've collected.", W / 2, py + 84);
+  ctx.fillText("Level progress and mute stay as they are.", W / 2, py + 108);
+  ctx.fillStyle = "#888"; ctx.font = "12px sans-serif";
+  ctx.fillText(isTouch ? "Tap Cancel to keep your babes." : "Esc / Space cancels  ·  Enter confirms", W / 2, py + 132);
+  const drawBtn = (b, label, fill, stroke) => {
+    ctx.fillStyle = fill; roundRect(b.x, b.y, b.w, b.h, 12); ctx.fill();
+    ctx.strokeStyle = stroke; ctx.lineWidth = 2; roundRect(b.x, b.y, b.w, b.h, 12); ctx.stroke();
+    ctx.fillStyle = "#fff"; ctx.font = "bold 18px sans-serif";
+    ctx.textBaseline = "middle"; ctx.fillText(label, b.x + b.w / 2, b.y + b.h / 2 + 1);
+    ctx.textBaseline = "alphabetic";
+  };
+  drawBtn(L.resetBtn, "Reset", "#e0457f", "#ffe66d");
+  drawBtn(L.cancelBtn, "Cancel", "#3a2a50", "#aaa");
   ctx.restore();
 }
 function drawResetToast() {
@@ -1982,17 +1972,26 @@ function resetLevel(full) {
   cameraX = Math.max(0, player.x - W*0.35);
 }
 
-function solidAt(px, py, pw, ph) {
-  // AABB vs platform rects
+// Floating 1-tile ledges are one-way: walk/jump through from below/side, land from above.
+function isOneWayPlat(p) { return p.y < GROUND_Y && p.h === 1; }
+
+function solidAt(px, py, pw, ph, mode) {
+  // mode "land" includes one-way tops when falling; otherwise skip one-way (no side/ceiling block)
+  const land = mode === "land";
   for (const p of platforms) {
-    const x = p.x*TILE, y = p.y*TILE, w = p.w*TILE, h = p.h*TILE;
-    if (px < x+w && px+pw > x && py < y+h && py+ph > y) return {x,y,w,h};
+    const x = p.x * TILE, y = p.y * TILE, w = p.w * TILE, h = p.h * TILE;
+    if (!(px < x + w && px + pw > x && py < y + h && py + ph > y)) continue;
+    if (isOneWayPlat(p)) {
+      if (!land) continue;
+      return { x, y, w, h, oneWay: true };
+    }
+    return { x, y, w, h, oneWay: false };
   }
   return null;
 }
 
 function resolvePlayer(dt) {
-  // horizontal
+  const prevBottom = player.y + player.h;
   player.x += player.vx * dt;
   let hit = solidAt(player.x, player.y, player.w, player.h);
   if (hit) {
@@ -2000,23 +1999,21 @@ function resolvePlayer(dt) {
     else if (player.vx < 0) player.x = hit.x + hit.w;
     player.vx = 0;
   }
-  // vertical
   player.y += player.vy * dt;
   player.onGround = false;
-  hit = solidAt(player.x, player.y, player.w, player.h);
-  if (hit) {
-    if (player.vy > 0) {
+  if (player.vy >= 0) {
+    hit = solidAt(player.x, player.y, player.w, player.h, "land");
+    if (hit && (!hit.oneWay || prevBottom <= hit.y + 6)) {
       player.y = hit.y - player.h;
       player.vy = 0;
       player.onGround = true;
-    } else if (player.vy < 0) {
-      player.y = hit.y + hit.h;
-      player.vy = 0;
     }
+  } else {
+    hit = solidAt(player.x, player.y, player.w, player.h);
+    if (hit) { player.y = hit.y + hit.h; player.vy = 0; }
   }
-  // world bounds
   if (player.x < 0) { player.x = 0; player.vx = 0; }
-  if (player.x + player.w > LEVEL_W * TILE) { player.x = LEVEL_W*TILE - player.w; player.vx = 0; }
+  if (player.x + player.w > LEVEL_W * TILE) { player.x = LEVEL_W * TILE - player.w; player.vx = 0; }
 }
 
 function groundUnder(px, feetY) {
@@ -2385,7 +2382,8 @@ function resetBossFight() {
   // Clear fight-only state; keep position / arena / caps
   boss.hp = BOSS_HP; boss.phase = 0; boss.mode = "idle"; boss.modeT = 0; boss.nextAtk = 0;
   boss.beam = null; boss.coins = []; clearBossMinions();
-  boss.shake = 0; boss.flash = 0; boss.grin = 0; boss.rewardPending = false; boss.defeated = false;
+  boss.shake = 0; boss.flash = 0; boss.grin = 0; boss.rewardPending = false; boss.defeated = false; boss.domeBroken = false;
+  for (const c of boss.caps) { c.falling = false; delete c.wx; delete c.wy; delete c.vx; delete c.vy; }
   // Remove the temporary walls so the next entry re-locks cleanly
   if (boss.wallPlats.length) {
     platforms = platforms.filter(p => !boss.wallPlats.includes(p));
@@ -2503,8 +2501,21 @@ function hitBoss() {
 
 function beginBossDefeat() {
   boss.mode = "defeat"; boss.modeT = 0; boss.defeated = true;
-  boss.shake = 1.8; boss.beam = null; boss.coins = [];
+  boss.shake = 2.2; boss.beam = null; boss.coins = [];
+  boss.domeBroken = true;
+  for (const c of boss.caps) {
+    c.falling = true;
+    c.wx = boss.x + boss.w / 2 + Math.cos(c.a) * c.r;
+    c.wy = boss.y + 50 + Math.sin(c.a * 0.9) * (c.r * 0.55);
+    c.vx = (Math.random() - 0.5) * 420;
+    c.vy = -220 - Math.random() * 320;
+    c.spin = (Math.random() - 0.5) * 10;
+  }
   clearBossMinions();
+  for (let i = 0; i < 28; i++) {
+    spawnParticles(boss.x + 20 + Math.random() * 90, boss.y + 30 + Math.random() * 80,
+      ["#ff6ab0", "#7ec8ff", "#ffe66d", "#fff", "#b48cff"][i % 5], 1);
+  }
   addCallout("GACHA DEMON DOWN!", "#ffe66d");
   sfx.win();
 }
@@ -2529,8 +2540,12 @@ function updateBoss(dt) {
   if (boss.shake > 0) boss.shake -= dt;
   if (boss.grin > 0) boss.grin -= dt;
   if (boss.flash > 0) boss.flash -= dt;
-  // Capsule jumble
-  for (const c of boss.caps) { c.a += c.sp * dt; c.bob += dt * 3; }
+  for (const c of boss.caps) {
+    if (c.falling) {
+      c.vy += GRAV * 0.85 * dt; c.wx += c.vx * dt; c.wy += c.vy * dt; c.spin = (c.spin || 0) + dt * 8;
+      c.vx *= (1 - 0.4 * dt);
+    } else { c.a += c.sp * dt; c.bob += dt * 3; }
+  }
 
   // Lock when the player crosses the arena entrance
   if (!boss.locked && !boss.defeated && player.x + player.w / 2 >= boss.arenaL + 8) lockBossArena();
@@ -2589,8 +2604,9 @@ function updateBoss(dt) {
   } else if (boss.mode === "coins") {
     if (boss.coins.length === 0 && boss.modeT > 0.5) beginBossVulnerable();
   } else if (boss.mode === "minions") {
-    // Vulnerable once minions are gone, or after a timeout so the fight can't stall
-    if ((boss.minions.every(m => !m.alive) && boss.modeT > 0.6) || boss.modeT > 5.5) beginBossVulnerable();
+    // Must clear all spawned minions (long failsafe only)
+    const allDead = boss.minions.length === 0 || boss.minions.every(m => !m.alive);
+    if ((allDead && boss.modeT > 0.6) || boss.modeT > 45) beginBossVulnerable();
   } else if (boss.mode === "stunned") {
     if (boss.modeT >= BOSS_HIT_STUN) { boss.mode = "idle"; boss.modeT = 0; boss.nextAtk = 0.6; boss.flash = 0; }
   } else if (boss.mode === "vulnerable") {
@@ -2628,28 +2644,58 @@ function drawBoss() {
   // Neon trim stripes
   ctx.fillStyle = "#5ef0ff"; ctx.fillRect(bx + 14, by + 56, boss.w - 28, 4);
   ctx.fillStyle = "#ffe66d"; ctx.fillRect(bx + 14, by + boss.h - 18, boss.w - 28, 4);
-  // Glass dome
+  // Glass dome (intact) or shattered wreck on defeat
   const dx = bx + boss.w / 2, dy = by + 58, rx = 46, ry = 52;
-  ctx.beginPath(); ctx.ellipse(dx, dy, rx, ry, 0, Math.PI, 0); ctx.closePath();
-  ctx.fillStyle = "rgba(180,220,255,0.22)"; ctx.fill();
-  ctx.strokeStyle = "rgba(255,255,255,0.7)"; ctx.lineWidth = 2; ctx.stroke();
-  // Capsules with babe faces (15x20, smoothing off)
-  ctx.save();
-  ctx.beginPath(); ctx.ellipse(dx, dy, rx - 2, ry - 2, 0, Math.PI, 0); ctx.closePath(); ctx.clip();
-  for (const c of boss.caps) {
-    const px = dx + Math.cos(c.a) * c.r;
-    const py = dy - 8 + Math.sin(c.a * 0.9) * (c.r * 0.55) + Math.sin(c.bob) * 3;
-    ctx.fillStyle = c.col;
-    ctx.beginPath(); ctx.ellipse(px, py, 9, 11, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,0.5)"; ctx.lineWidth = 1; ctx.stroke();
-    const babe = babeById(c.id);
-    if (babe) drawCard(babe, px - 7.5, py - 10, 15, 20, { iconOnly: true });
+  const wrecked = !!(boss.domeBroken || boss.mode === "defeat" || boss.mode === "done");
+  if (!wrecked) {
+    ctx.beginPath(); ctx.ellipse(dx, dy, rx, ry, 0, Math.PI, 0); ctx.closePath();
+    ctx.fillStyle = "rgba(180,220,255,0.22)"; ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.7)"; ctx.lineWidth = 2; ctx.stroke();
+    ctx.save();
+    ctx.beginPath(); ctx.ellipse(dx, dy, rx - 2, ry - 2, 0, Math.PI, 0); ctx.closePath(); ctx.clip();
+    for (const c of boss.caps) {
+      const px = dx + Math.cos(c.a) * c.r;
+      const py = dy - 8 + Math.sin(c.a * 0.9) * (c.r * 0.55) + Math.sin(c.bob) * 3;
+      ctx.fillStyle = c.col;
+      ctx.beginPath(); ctx.ellipse(px, py, 9, 11, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.5)"; ctx.lineWidth = 1; ctx.stroke();
+      const babe = babeById(c.id);
+      if (babe) drawCard(babe, px - 7.5, py - 10, 15, 20, { iconOnly: true });
+    }
+    ctx.restore();
+  } else {
+    ctx.strokeStyle = "rgba(180,220,255,0.55)"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.ellipse(dx, dy + 8, rx, ry * 0.35, 0, Math.PI, 0); ctx.stroke();
+    ctx.fillStyle = "rgba(90,40,120,0.5)";
+    ctx.beginPath(); ctx.ellipse(dx, dy + 10, rx - 4, 10, 0, 0, Math.PI * 2); ctx.fill();
+    for (let i = 0; i < 7; i++) {
+      const ang = -Math.PI + (i / 6) * Math.PI;
+      const sx = dx + Math.cos(ang) * (20 + i * 4);
+      const sy = dy - 10 + Math.sin(ang) * 18 + (i % 3) * 6;
+      ctx.fillStyle = `rgba(200,230,255,${0.35 + (i % 3) * 0.1})`;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy); ctx.lineTo(sx + 10, sy + 14); ctx.lineTo(sx - 8, sy + 12);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.fillRect(bx + 18, by + 70, boss.w - 36, 8);
+    ctx.fillStyle = "#3a2030";
+    roundRect(bx + 20, by + 150, 36, 22, 4); ctx.fill();
+    for (const c of boss.caps) {
+      if (!c.falling || c.wy > GROUND_Y * TILE + 40) continue;
+      ctx.save(); ctx.translate(c.wx, c.wy); ctx.rotate(c.spin || 0);
+      ctx.fillStyle = c.col;
+      ctx.beginPath(); ctx.ellipse(0, 0, 9, 11, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.5)"; ctx.lineWidth = 1; ctx.stroke();
+      const babe = babeById(c.id);
+      if (babe) drawCard(babe, -7.5, -10, 15, 20, { iconOnly: true });
+      ctx.restore();
+    }
   }
-  ctx.restore();
   // Demon face (stunned = cyan/white, vulnerable = dim, else hostile red)
   const stunned = boss.mode === "stunned";
-  const eyeY = by + 100, eyeOpen = (boss.mode === "vulnerable" || stunned) ? 3 : 6;
-  ctx.fillStyle = stunned ? "#5ef0ff" : boss.mode === "vulnerable" ? "#888" : "#ff3a5a";
+  const eyeY = by + 100, eyeOpen = wrecked ? 2 : ((boss.mode === "vulnerable" || stunned) ? 3 : 6);
+  ctx.fillStyle = wrecked ? "#442233" : stunned ? "#5ef0ff" : boss.mode === "vulnerable" ? "#888" : "#ff3a5a";
   ctx.beginPath(); ctx.ellipse(bx + 40, eyeY, 8, eyeOpen, 0, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.ellipse(bx + boss.w - 40, eyeY, 8, eyeOpen, 0, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = "#ffe66d";
@@ -3583,8 +3629,8 @@ function galleryFilteredList() {
 }
 
 function galleryResetBtn() {
-  // Top-right of the gallery — big enough for a thumb
-  return { x: W - 118, y: 14, w: 100, h: 36 };
+  // Top-right of the gallery — only reset entry point (P key removed)
+  return { x: W - 168, y: 12, w: 150, h: 36 };
 }
 function handleGalleryClick(sx, sy) {
   // Reset-confirm popup buttons (mobile) take priority over the gallery underneath
@@ -3691,7 +3737,7 @@ function drawCollection() {
     roundRect(rb.x, rb.y, rb.w, rb.h, 10); ctx.stroke();
     ctx.fillStyle = "#fff"; ctx.font = "bold 14px sans-serif";
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText("Reset", rb.x + rb.w / 2, rb.y + rb.h / 2 + 1);
+    ctx.fillText("Reset collection", rb.x + rb.w / 2, rb.y + rb.h / 2 + 1);
     ctx.textBaseline = "alphabetic"; ctx.textAlign = "center";
   }
   ctx.font = "bold 14px sans-serif";
@@ -3712,7 +3758,7 @@ function drawCollection() {
   }
   ctx.font = "11px sans-serif";
   ctx.fillStyle = "#888";
-  ctx.fillText((isTouch ? "Tap Reset to clear babes  ·  " : "P reset babes  ·  ") + "C / Esc close  ·  Wheel / arrows scroll  ·  1–6 filters", W / 2, H - 10);
+  ctx.fillText("Reset collection clears babes  ·  C / Esc close  ·  Wheel / arrows scroll  ·  1–6 filters", W / 2, H - 10);
 
   // Filter tabs
   const tabY = 62, tabH = 26, tabGap = 6;
@@ -4149,14 +4195,10 @@ function frame(dt) {
   // Reset confirm pauses the whole game (including congrats / death / boss / slots) and sits on top.
   if (resetConfirm) {
     resetConfirm.t += dt;
-    if (justPressed["p"]) confirmResetCollection();
+    if (justPressed["enter"]) confirmResetCollection();
     else if (justPressed[" "] || justPressed["escape"]) cancelResetConfirm();
     for (const k in justPressed) delete justPressed[k];
     keys[" "] = false; keys["enter"] = false;
-  } else if (justPressed["p"]) {
-    // P from ANY state — title, play, gallery, death, win, congrats, boss…
-    openResetConfirm();
-    for (const k in justPressed) delete justPressed[k];
   } else if (congrats) {
     congrats.t += dt;
     if (justPressed["enter"]) dismissCongrats();
@@ -4424,7 +4466,6 @@ preloadCardArt().then(() => {
 }).catch(e => console.warn("[HBC] card art preload", e));
 loadBgm();
 preloadCryAudio().then(() => {
-  console.log("[HBC] cry audio ready", { oneshot: cryAudio.oneshotUrl, loop: cryAudio.loopUrl, webaudio: !!cryAudio.oneshotBuf });
 }).catch(e => console.warn("[HBC] cry audio preload", e));
 requestAnimationFrame(loop);
 
