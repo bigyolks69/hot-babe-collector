@@ -16,14 +16,17 @@ Single-file game: open `index.html` in Chrome or Safari (double-click works offl
 | Start | Enter / Space on title |
 | Restart (after win) | R or Enter |
 
-On touch devices, on-screen buttons appear (← → jump C).
+On touch devices, large on-screen buttons appear (← → jump, C gallery). Landscape recommended (portrait shows a rotate hint). Tap title/win to start/restart; gallery supports swipe scroll and tap filters.
+
+### Mobile / share link
+Open `index.html` (or host the file) on iOS Safari / Android Chrome. Viewport is locked (no zoom); WebAudio unlocks on first tap; optional fullscreen button. Add to Home Screen friendly (`apple-mobile-web-app-capable`).
 
 ## Design notes (prototype)
 
 - **Babe pool**: **30** data-driven placeholders in `BABE_POOL` (append entries to grow). Shared **3:4** aspect (`CARD_ASPECT = 72/96`).
 - **HUD**: bottom-right 5-slot window into the sorted 30-babe list (`Babes N/30`, icon-only 3:4); slides to focus gains/losses with a brief highlight.
 - **Gallery (C)**: scrollable grid, rarity→name sort, filters All / Owned / Missing / Common / Rare / Epic / Legendary, click for detail.
-- **Collectibles**: **6** babe-coins in the level (sparse). Respawns on death.
+- **Collectibles**: **6** babe-coins in the level (sparse). Coins **and enemies** respawn on death.
 - **Coins → babes**: ~1.2s slot roll overlay (gameplay continues); queued pickups; pre-planted result (no snap).
 - **Hearts**: 3 HP. Hit = knockback (~290 px/s away, vy −280) + 0.25s stun + invuln flash. Stomp from above.
 - **Death**: gallery-style scrolled grid (rarity→name) with the lost babe crossed by a pen-stroke red X; owned count in header. Pit = full wipe + lose one babe.

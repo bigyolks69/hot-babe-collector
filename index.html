@@ -2,10 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1a1020">
+<meta name="description" content="Hot Babe Collector — Big Salty Gaming Studio">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23ff5a9a'/%3E%3Ctext x='32' y='42' text-anchor='middle' font-size='32' fill='white'%3E%E2%99%A5%3C/text%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23ff5a9a'/%3E%3Ctext x='32' y='42' text-anchor='middle' font-size='32' fill='white'%3E%E2%99%A5%3C/text%3E%3C/svg%3E">
 <title>Hot Babe Collector — Big Salty Gaming Studio</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
     width: 100%; height: 100%;
     overflow: hidden;
@@ -14,6 +21,10 @@
     touch-action: none;
     user-select: none;
     -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    overscroll-behavior: none;
+    position: fixed;
+    inset: 0;
   }
   #wrap {
     position: relative;
@@ -21,15 +32,15 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    background: #120818;
   }
   canvas#game {
     display: block;
     image-rendering: pixelated;
     image-rendering: crisp-edges;
-    max-width: 100%;
-    max-height: 100%;
     background: #2a1840;
     box-shadow: 0 0 40px rgba(255,80,140,0.25);
+    touch-action: none;
   }
   #touch {
     display: none;
@@ -42,34 +53,97 @@
   .tbtn {
     position: absolute;
     pointer-events: auto;
-    width: 64px; height: 64px;
+    width: 78px; height: 78px;
     border-radius: 50%;
-    background: rgba(255,255,255,0.18);
-    border: 2px solid rgba(255,255,255,0.35);
+    background: rgba(255,255,255,0.22);
+    border: 3px solid rgba(255,255,255,0.4);
     color: #fff;
-    font-size: 22px;
+    font-size: 26px;
     font-weight: bold;
     display: flex;
     align-items: center;
     justify-content: center;
     backdrop-filter: blur(4px);
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: none;
   }
-  .tbtn:active, .tbtn.active { background: rgba(255,120,180,0.45); }
-  #tLeft  { left: 20px; bottom: 30px; }
-  #tRight { left: 96px; bottom: 30px; }
-  #tJump  { right: 20px; bottom: 30px; width: 72px; height: 72px; }
-  /* Keep C at top-right; live babe tray sits above jump on canvas */
-  #tColl  { right: 20px; top: 70px; width: 52px; height: 52px; font-size: 16px; }
+  .tbtn:active, .tbtn.active { background: rgba(255,120,180,0.5); transform: scale(0.96); }
+  #tLeft  { left: max(16px, env(safe-area-inset-left)); bottom: max(24px, env(safe-area-inset-bottom)); }
+  #tRight { left: calc(max(16px, env(safe-area-inset-left)) + 90px); bottom: max(24px, env(safe-area-inset-bottom)); }
+  #tJump  {
+    right: max(16px, env(safe-area-inset-right));
+    bottom: max(24px, env(safe-area-inset-bottom));
+    width: 96px; height: 96px; font-size: 30px;
+  }
+  /* Gallery button top-left so it clears top-right HUD "Babes" and bottom-right tray */
+  #tColl  {
+    left: max(16px, env(safe-area-inset-left));
+    top: max(16px, env(safe-area-inset-top));
+    width: 58px; height: 58px; font-size: 18px;
+  }
+  #fsBtn {
+    position: absolute;
+    right: max(12px, env(safe-area-inset-right));
+    top: max(12px, env(safe-area-inset-top));
+    z-index: 12;
+    pointer-events: auto;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.35);
+    background: rgba(0,0,0,0.45);
+    color: #fff;
+    font-size: 12px;
+    font-weight: bold;
+    display: none;
+    touch-action: none;
+  }
+  #fsBtn.show { display: block; }
+  #rotateHint {
+    display: none;
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    background: rgba(18,8,24,0.92);
+    color: #ffb0d0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    pointer-events: auto;
+    touch-action: none;
+  }
+  #rotateHint.show { display: flex; }
+  #rotateHint h2 { color: #ff5a9a; font-size: 22px; margin-bottom: 12px; }
+  #rotateHint p { font-size: 15px; max-width: 280px; line-height: 1.4; }
+  #rotateHint button {
+    margin-top: 18px;
+    padding: 12px 20px;
+    border-radius: 10px;
+    border: 2px solid #ff8ec8;
+    background: rgba(255,90,154,0.35);
+    color: #fff;
+    font-weight: bold;
+    font-size: 15px;
+    touch-action: none;
+  }
 </style>
 </head>
 <body>
 <div id="wrap">
   <canvas id="game" width="960" height="540"></canvas>
   <div id="touch">
-    <button class="tbtn" id="tLeft">◀</button>
-    <button class="tbtn" id="tRight">▶</button>
-    <button class="tbtn" id="tJump">▲</button>
-    <button class="tbtn" id="tColl">C</button>
+    <button type="button" class="tbtn" id="tLeft" aria-label="Left">◀</button>
+    <button type="button" class="tbtn" id="tRight" aria-label="Right">▶</button>
+    <button type="button" class="tbtn" id="tJump" aria-label="Jump">▲</button>
+    <button type="button" class="tbtn" id="tColl" aria-label="Babe gallery">C</button>
+  </div>
+  <button type="button" id="fsBtn" aria-label="Fullscreen">⛶ Full</button>
+  <div id="rotateHint">
+    <h2>Rotate your phone</h2>
+    <p>Hot Babe Collector plays best in landscape. Rotate for bigger controls — or tap below to play in portrait anyway.</p>
+    <button type="button" id="playPortrait">Play in portrait</button>
   </div>
 </div>
 <script>
@@ -237,33 +311,150 @@ window.addEventListener("wheel", e => {
   e.preventDefault();
   gallery.scroll += e.deltaY;
 }, { passive: false });
-canvas.addEventListener("mousedown", e => {
-  if (state !== "collection") return;
-  const rect = canvas.getBoundingClientRect();
-  const sx = (e.clientX - rect.left) * (W / rect.width);
-  const sy = (e.clientY - rect.top) * (H / rect.height);
-  handleGalleryClick(sx, sy);
-});
-
-// Touch controls
+// ---------- Mobile / pointer helpers ----------
 const isTouch = ("ontouchstart" in window) || navigator.maxTouchPoints > 0;
 const touchEl = document.getElementById("touch");
-if (isTouch) touchEl.classList.add("show");
+const fsBtn = document.getElementById("fsBtn");
+const rotateHint = document.getElementById("rotateHint");
+let allowPortraitPlay = false;
+let gallerySwipeY0 = null;
+let gallerySwipeScroll0 = 0;
+
+function canvasCoords(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (clientX - rect.left) * (W / Math.max(1, rect.width)),
+    y: (clientY - rect.top) * (H / Math.max(1, rect.height)),
+  };
+}
+
+function handleCanvasTap(sx, sy) {
+  ensureAudio();
+  if (state === "title") {
+    resetLevel(true);
+    state = "play";
+    return;
+  }
+  if (state === "win") {
+    resetLevel(true);
+    state = "play";
+    return;
+  }
+  if (state === "collection") {
+    handleGalleryClick(sx, sy);
+  }
+}
+
+canvas.addEventListener("mousedown", e => {
+  if (e.button !== 0) return;
+  const { x, y } = canvasCoords(e.clientX, e.clientY);
+  if (state === "collection") handleGalleryClick(x, y);
+  else if (state === "title" || state === "win") handleCanvasTap(x, y);
+});
+
+canvas.addEventListener("touchstart", e => {
+  if (!e.changedTouches.length) return;
+  e.preventDefault();
+  ensureAudio();
+  const touch = e.changedTouches[0];
+  const { x, y } = canvasCoords(touch.clientX, touch.clientY);
+  if (state === "collection") {
+    gallerySwipeY0 = touch.clientY;
+    gallerySwipeScroll0 = gallery.scroll;
+    // defer click to touchend unless swipe
+    canvas._tapX = x; canvas._tapY = y; canvas._didSwipe = false;
+  } else {
+    handleCanvasTap(x, y);
+  }
+}, { passive: false });
+
+canvas.addEventListener("touchmove", e => {
+  if (state !== "collection" || gallerySwipeY0 == null) return;
+  e.preventDefault();
+  const touch = e.changedTouches[0] || e.touches[0];
+  if (!touch) return;
+  const dy = gallerySwipeY0 - touch.clientY; // finger up → content up
+  if (Math.abs(dy) > 8) canvas._didSwipe = true;
+  gallery.scroll = gallerySwipeScroll0 + dy * (H / Math.max(1, canvas.getBoundingClientRect().height));
+}, { passive: false });
+
+canvas.addEventListener("touchend", e => {
+  if (state === "collection") {
+    e.preventDefault();
+    if (!canvas._didSwipe && canvas._tapX != null) {
+      handleGalleryClick(canvas._tapX, canvas._tapY);
+    }
+    gallerySwipeY0 = null;
+    canvas._tapX = canvas._tapY = null;
+    canvas._didSwipe = false;
+  }
+}, { passive: false });
+
+// Block page scroll / bounce / zoom gestures
+["gesturestart", "gesturechange", "gestureend"].forEach(ev => {
+  document.addEventListener(ev, e => e.preventDefault(), { passive: false });
+});
+document.addEventListener("touchmove", e => {
+  if (e.target === canvas || (e.target && e.target.classList && e.target.classList.contains("tbtn"))) return;
+  e.preventDefault();
+}, { passive: false });
+
+if (isTouch) {
+  touchEl.classList.add("show");
+  fsBtn.classList.add("show");
+}
 function bindTouch(id, key) {
   const el = document.getElementById(id);
-  const down = e => { e.preventDefault(); keys[key] = true; justPressed[key] = true; el.classList.add("active"); ensureAudio(); };
-  const up = e => { e.preventDefault(); keys[key] = false; el.classList.remove("active"); };
+  const down = e => {
+    e.preventDefault();
+    e.stopPropagation();
+    keys[key] = true;
+    justPressed[key] = true;
+    el.classList.add("active");
+    ensureAudio();
+  };
+  const up = e => {
+    e.preventDefault();
+    keys[key] = false;
+    el.classList.remove("active");
+  };
   el.addEventListener("touchstart", down, { passive: false });
   el.addEventListener("touchend", up, { passive: false });
   el.addEventListener("touchcancel", up, { passive: false });
   el.addEventListener("mousedown", down);
   el.addEventListener("mouseup", up);
   el.addEventListener("mouseleave", up);
+  el.addEventListener("contextmenu", e => e.preventDefault());
 }
 bindTouch("tLeft", "a");
 bindTouch("tRight", "d");
 bindTouch("tJump", " ");
 bindTouch("tColl", "c");
+
+fsBtn.addEventListener("click", e => {
+  e.preventDefault();
+  ensureAudio();
+  const root = document.documentElement;
+  if (!document.fullscreenElement && root.requestFullscreen) root.requestFullscreen().catch(() => {});
+  else if (document.exitFullscreen) document.exitFullscreen();
+});
+document.getElementById("playPortrait").addEventListener("click", e => {
+  e.preventDefault();
+  allowPortraitPlay = true;
+  updateRotateHint();
+  ensureAudio();
+});
+
+function updateRotateHint() {
+  if (!isTouch) { rotateHint.classList.remove("show"); return; }
+  const portrait = window.innerHeight > window.innerWidth;
+  if (portrait && !allowPortraitPlay) rotateHint.classList.add("show");
+  else rotateHint.classList.remove("show");
+}
+window.addEventListener("orientationchange", () => {
+  allowPortraitPlay = false;
+  setTimeout(() => { fit(); updateRotateHint(); }, 200);
+});
 
 // ---------- Drawing helpers ----------
 function roundRect(x, y, w, h, r) {
@@ -967,9 +1158,9 @@ function resetAfterDeath() {
   player.x = cp.x; player.y = cp.y - player.h;
   player.vx = 0; player.vy = 0;
   player.stun = 0;
-  // Respawn all level collectible cards/coins after any death (enemies or pit)
+  // Respawn coins AND enemies at original positions/state (same as level start)
   coins = makeCoins();
-  // Enemies stay defeated for nicer flow
+  enemies = makeEnemies();
 }
 
 function updateParticles(dt) {
@@ -1168,7 +1359,7 @@ function drawHudLiveBabes() {
   const panelW = pad * 2 + HUD_SLOTS * cw + (HUD_SLOTS - 1) * gap;
   const panelH = pad + counterH + ch + pad;
   const margin = 10;
-  const lift = isTouch ? 108 : 18;
+  const lift = isTouch ? 130 : 18;
   const panelX = W - panelW - margin;
   const panelY = H - panelH - lift;
   const step = cw + gap;
@@ -1616,7 +1807,7 @@ function drawTitle() {
   ctx.fillStyle = "#ffe66d";
   ctx.font = "bold 20px sans-serif";
   const blink = Math.sin(performance.now()/300) > 0;
-  if (blink) ctx.fillText("Press Enter / Space to Start", W/2, 360);
+  if (blink) ctx.fillText(isTouch ? "Tap to Start" : "Press Enter / Space to Start", W/2, 360);
 
   ctx.fillStyle = "#999";
   ctx.font = "12px sans-serif";
@@ -1895,7 +2086,7 @@ function drawWin() {
   ctx.fillStyle = "#ffe66d";
   ctx.font = "bold 16px sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("Press R or Enter to Restart", W / 2, H - 48);
+  ctx.fillText(isTouch ? "Tap to Restart" : "Press R or Enter to Restart", W / 2, H - 48);
   ctx.fillStyle = "#aaa";
   ctx.font = "13px sans-serif";
   ctx.fillText("Press C to view full babe gallery", W / 2, H - 26);
@@ -1977,12 +2168,17 @@ function loop(now) {
 
 // Fit canvas
 function fit() {
+  // Letterbox: scale canvas to fit while keeping 16:9 game aspect
   const r = Math.min(window.innerWidth / W, window.innerHeight / H);
-  canvas.style.width = Math.floor(W * r) + "px";
-  canvas.style.height = Math.floor(H * r) + "px";
+  const cssW = Math.max(1, Math.floor(W * r));
+  const cssH = Math.max(1, Math.floor(H * r));
+  canvas.style.width = cssW + "px";
+  canvas.style.height = cssH + "px";
+  updateRotateHint();
 }
-window.addEventListener("resize", fit);
+window.addEventListener("resize", () => { fit(); });
 fit();
+updateRotateHint();
 
 resetLevel(true);
 state = "title";
@@ -1994,6 +2190,7 @@ window.__HBC = {
   setState: (s) => { state = s; },
   getPlayer: () => player,
   getCoins: () => coins,
+  getEnemies: () => enemies,
   getHearts: () => hearts,
   getCollection: () => collection,
   getSlot: () => slot,
