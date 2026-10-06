@@ -698,6 +698,24 @@ window.addEventListener("wheel", e => {
 }, { passive: false });
 // ---------- Mobile / pointer helpers ----------
 const isTouch = ("ontouchstart" in window) || navigator.maxTouchPoints > 0;
+// Desktop: pin the mute button to the canvas, just left of the top-right
+// babes/pulls box (game coords), so it never covers HUD text. Touch keeps CSS layout.
+let hudBoxX = 960 - 12 - 158; // updated by drawHUD (box grows to fit its hint)
+function positionMuteBtn() {
+  if (isTouch) return;
+  const btn = document.getElementById("muteBtn");
+  const cv = document.getElementById("game");
+  if (!btn || !cv) return;
+  const r = Math.min(window.innerWidth / cv.width, window.innerHeight / cv.height);
+  const cssW = Math.floor(cv.width * r), cssH = Math.floor(cv.height * r);
+  const offX = (window.innerWidth - cssW) / 2, offY = (window.innerHeight - cssH) / 2;
+  const size = Math.round(Math.max(28, Math.min(40, 36 * r)));
+  btn.style.width = btn.style.height = size + "px";
+  btn.style.fontSize = Math.round(size * 0.45) + "px";
+  btn.style.right = "auto";
+  btn.style.left = Math.round(offX + (hudBoxX - 8) * r - size) + "px";
+  btn.style.top = Math.round(offY + Math.max(2, (8 + 18) * r - size / 2)) + "px";
+}
 const touchEl = document.getElementById("touch");
 const fsBtn = document.getElementById("fsBtn");
 let gallerySwipeY0 = null;
@@ -2265,16 +2283,22 @@ function drawHUD() {
   // collection count
   const unique = ownedUniqueCount(collection);
   const total = totalPulls(collection);
+  // Box grows leftward to fit the hint; right edge stays at W - 12
+  const pullsLine = "Total pulls: " + total + (isTouch ? "  [Collection]" : "  [press C = Collection]");
+  ctx.font = "11px sans-serif";
+  const boxW = Math.max(158, Math.ceil(ctx.measureText(pullsLine).width) + 24);
+  const boxX = W - 12 - boxW;
+  if (boxX !== hudBoxX) { hudBoxX = boxX; positionMuteBtn(); }
   ctx.fillStyle = "rgba(0,0,0,0.4)";
-  roundRect(W - 170, 8, 158, 36, 8);
+  roundRect(boxX, 8, boxW, 36, 8);
   ctx.fill();
   ctx.fillStyle = "#fff";
   ctx.font = "bold 13px sans-serif";
   ctx.textAlign = "left";
-  ctx.fillText("Babes " + unique + "/" + BABE_POOL.length, W - 158, 24);
+  ctx.fillText("Babes " + unique + "/" + BABE_POOL.length, boxX + 12, 24);
   ctx.font = "11px sans-serif";
   ctx.fillStyle = "#ffb0d0";
-  ctx.fillText("Total pulls: " + total + (isTouch ? "  [Collection]" : "  [C]"), W - 158, 38);
+  ctx.fillText(pullsLine, boxX + 12, 38);
 
   // studio tag
   ctx.fillStyle = "rgba(255,255,255,0.25)";
@@ -3015,6 +3039,7 @@ function fit() {
   const cssH = Math.max(1, Math.floor(H * r));
   canvas.style.width = cssW + "px";
   canvas.style.height = cssH + "px";
+  positionMuteBtn();
 }
 window.addEventListener("resize", () => { fit(); });
 fit();
