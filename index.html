@@ -775,7 +775,7 @@ const player = {
   x: 64, y: 14*TILE - 40, w: 24, h: 36,
   vx: 0, vy: 0, onGround: false,
   facing: 1, coyote: 0, jumpBuf: 0,
-  anim: 0, flash: 0, stun: 0, stompGrace: 0,
+  anim: 0, flash: 0, stun: 0, stompGrace: 0, fromStomp: false,
 };
 
 function resetLevel(full) {
@@ -806,7 +806,7 @@ function resetLevel(full) {
   player.y = cp.y - player.h;
   player.vx = 0; player.vy = 0;
   player.onGround = false;
-  player.coyote = 0; player.jumpBuf = 0; player.stun = 0; player.stompGrace = 0;
+  player.coyote = 0; player.jumpBuf = 0; player.stun = 0; player.stompGrace = 0; player.fromStomp = false;
   cameraX = Math.max(0, player.x - W*0.35);
 }
 
@@ -1023,9 +1023,10 @@ function updatePlay(dt) {
       player.jumpBuf = 0;
       sfx.jump();
     }
-    // variable jump height (skip during stompGrace so Mario bounce isn't eaten)
+    // variable jump height — never cut an active stomp bounce until apex
     const jumpHeld = keys[" "] || keys["arrowup"] || keys["w"];
-    if (!jumpHeld && player.vy < 0 && player.stompGrace <= 0) {
+    if (player.fromStomp && player.vy >= 0) player.fromStomp = false;
+    if (!jumpHeld && player.vy < 0 && !player.fromStomp) {
       player.vy *= JUMP_CUT;
     }
   } else {
@@ -1103,6 +1104,7 @@ function updatePlay(dt) {
       const jumpHeld = keys[" "] || keys["arrowup"] || keys["w"];
       player.vy = jumpHeld ? JUMP_V : -480;
       player.stompGrace = 0.12; // blocks hurt; allows bounce-chain stomps
+      player.fromStomp = true;  // exempt JUMP_CUT until apex
       player.jumpBuf = 0;
       sfx.stomp();
       spawnParticles(e.x + e.w/2, e.y + e.h/2, e.type === "hopper" ? "#7dff9a" : "#ff8a5b", 12);
@@ -1173,6 +1175,7 @@ function resetAfterDeath() {
   player.vx = 0; player.vy = 0;
   player.stun = 0;
   player.stompGrace = 0;
+  player.fromStomp = false;
   // Respawn coins AND enemies at original positions/state (same as level start)
   coins = makeCoins();
   enemies = makeEnemies();
