@@ -1424,7 +1424,8 @@ const SECTIONS = {
     picks: [[15, 11]], enemies: [WK(9, 15, 8, 12, 45, 2), WK(21, 15, 19, 26, 70)], cps: [2] },
   staircase: { w: 28, plats: [G(0, 6), COL(6, 13, 3), COL(9, 11, 3), COL(12, 9, 4), COL(16, 11, 3), COL(19, 13, 3), G(22, 6)],
     picks: [[13, 7]], enemies: [HP(13, 9, 12, 16, 35, 1, 0.3), WK(24, 15, 22, 28, 60, 2)], cuts: [2] },
-  rest: { w: 14, plats: [G(0, 14), P(7, 13, 3)], picks: [[8, 11]], enemies: [], cps: [3] },
+  // breather pad (no enemies) — mid-level checkpoints land on these
+  rest: { w: 16, plats: [G(0, 16), P(10, 13, 3)], picks: [[11, 11]], enemies: [], cps: [3] },
   highRoad: { w: 34, plats: [G(0, 34), P(4, 13, 3), P(8, 11, 4), P(13, 9, 5), P(19, 9, 5), P(25, 11, 3), P(29, 13, 3)],
     picks: [[16, 7], [30, 11]], enemies: [WK(10, 15, 1, 33, 75), WK(24, 15, 1, 33, 70, 2), HP(21, 9, 19, 24, 30, 2, 0.8)], cuts: [2, 17] },
   zigzag: { w: 30, plats: [G(0, 4), P(6, 13, 3), P(11, 11, 3), P(16, 13, 3), P(21, 11, 3), G(26, 4)],
@@ -1453,11 +1454,14 @@ const DIFFICULTY = {
 };
 const LEVELS = [
   { id: 1, name: "Level 1", theme: "dusk", sections: [
-      "classic", "classicEnd", "meadow", "pitIslands", "staircase", "rest", "highRoad", "zigzag",
-      "arena", "rest", "valley", "towers", "doubleGap", "finale"] },
+      "classic", "classicEnd", "rest", "meadow", "pitIslands", "staircase", "highRoad", "zigzag",
+      "rest", "arena", "valley", "towers", "doubleGap", "finale"] },
   { id: 2, name: "Level 2", theme: "night", sections: [
-      "rest", "meadow", "bridge", "ladder", "rest", "towers", "gauntlet", "pitIslands", "highRoad",
-      "rest", "zigzag", "doubleGap", "arena", "valley", "staircase", "finale"] },
+      "rest", "meadow", "bridge", "ladder", "towers", "rest", "gauntlet", "pitIslands", "highRoad",
+      "zigzag", "rest", "doubleGap", "arena", "valley", "staircase", "finale"],
+    // Flyers: [section index, start x, patrol a, patrol b, base speed] — over open stretches only,
+    // hover height derived from the floor so walking underneath is always safe (see buildLevel)
+    flyers: [[1, 19, 16, 25, 45], [2, 10, 5, 17, 50], [6, 30, 27, 36, 50], [7, 22, 19, 26, 45], [12, 25, 23, 30, 55], [15, 2, 0, 5, 40]] },
 ];
 const LEVEL_THEMES = {
   dusk:  { sky: ["#1b0f2e", "#3a1a4a", "#6b2d5c"], hills: "#2a1538", dirt: "#5c3a28", grass: "#4ec96a", edge: "#3a8f4c" },
@@ -1473,16 +1477,24 @@ function spreadPick(arr, k) {
   return out;
 }
 
-const CP_MIN_GAP = 30;
+// Mid-level checkpoints: placed near these fractions of the start→goal run, on safe ground
+const CP_FRACTIONS = [1 / 3, 2 / 3];
+const CP_ENEMY_CLEAR = 4; // tiles kept clear of any enemy patrol range
+// Flyer motion envelope (px): hover band ± FLY_BOB, plus up to FLY_SWOOP lower while swooping.
+// The lowest point keeps FLY_HEAD_CLEAR px above a standing player's head on the highest floor nearby.
+const FLY_W = 26, FLY_H = 20, FLY_BOB = 8, FLY_SWOOP = 80, FLY_HEAD_CLEAR = 2;
+const FLY_RANGE = 150, FLY_TELL = 0.3, FLY_DIVE_V = 120, FLY_RISE_V = 70, FLY_HOLD = 0.45, FLY_COOL = 1.4;
+
 function buildLevel(def, diff) {
-  const plats = [], picks = [], slots = [], cps = [], cutSpots = [];
+  const plats = [], picks = [], slots = [], cps = [], cutSpots = [], offs = [];
   let ox = 0, goalX = null;
   for (const key of def.sections) {
+    offs.push(ox);
     const sec = SECTIONS[key];
     for (const [x, y, w, h] of sec.plats) if (w > 0) plats.push({ x: x + ox, y, w, h });
     for (const [x, y] of sec.picks || []) picks.push([x + ox, y]);
     for (const e of sec.enemies || []) slots.push(Object.assign({}, e, { x: e.x + ox, a: e.a + ox, b: e.b + ox }));
-    for (const c of sec.cps || []) cps.push(c + ox); // candidates, thinned below
+    for (const c of sec.cps || []) cps.push(c + ox); // only the first (start spawn) is used
     for (const c of sec.cuts || []) cutSpots.push(c + ox);
     if (sec.goal != null) goalX = sec.goal + ox;
     ox += sec.w;
@@ -1495,10 +1507,32 @@ function buildLevel(def, diff) {
   const target = Math.round(t1.length * diff.enemyCount);
   const chosen = target <= t1.length ? spreadPick(t1, target) : t1.concat(spreadPick(t2, target - t1.length));
   chosen.sort((a, b) => a.x - b.x);
-  // Checkpoints: keep candidates at least CP_MIN_GAP tiles apart (first one is the start)
+  // Flyers (explicit per level; not scaled by enemyCount). Hover from the highest floor under the patrol ±2 tiles.
+  const flyers = (def.flyers || []).map(([si, x, a, b, vx]) => {
+    const o = offs[si], A = a + o, B = b + o;
+    let floorTop = Infinity;
+    for (const p of plats) if (p.x < B + 2 && p.x + p.w > A - 2) floorTop = Math.min(floorTop, p.y * TILE);
+    const PH = 44; // PLAYER_H
+    const hoverY = floorTop - PH - FLY_HEAD_CLEAR - FLY_SWOOP - FLY_BOB - FLY_H;
+    return { type: "flyer", x: x + o, a: A, b: B, vx, tier: 1, hoverY, floorTop };
+  });
+  // Checkpoints: start spawn + one near each CP_FRACTIONS point, searched outward for safe ground:
+  // solid ground under [x-2, x+3], nothing low overhead, no enemy patrol within CP_ENEMY_CLEAR tiles
   cps.sort((a, b) => a - b);
-  const keptCps = [];
-  for (const c of cps) if (!keptCps.length || c - keptCps[keptCps.length - 1] >= CP_MIN_GAP) keptCps.push(c);
+  const startX = cps.length ? cps[0] : 2;
+  const endX = goalX != null ? goalX : width - 4;
+  const safeCp = x => plats.some(p => p.y === GROUND_Y && p.x <= x - 2 && p.x + p.w >= x + 3) &&
+    !plats.some(p => p.y < GROUND_Y && p.y >= GROUND_Y - 4 && p.x < x + 3 && p.x + p.w > x - 1) &&
+    !chosen.concat(flyers).some(e => x >= e.a - CP_ENEMY_CLEAR && x <= e.b + CP_ENEMY_CLEAR) &&
+    !keptPicks.some(([px]) => Math.abs(px - x) < 2);
+  const keptCps = [startX];
+  for (const f of CP_FRACTIONS) {
+    const target = Math.round(startX + (endX - startX) * f);
+    for (let d = 0; d < 80; d++) {
+      const x = [target + d, target - d].find(safeCp);
+      if (x != null) { keptCps.push(x); break; }
+    }
+  }
   // Pits: cut a 2-tile gap into a share of the marked ground spots (never under a pickup/enemy/flag)
   const blocked = x => keptPicks.some(([px]) => Math.abs(px - x) < 3) || chosen.some(e => Math.abs(e.x - x) < 3) ||
     keptCps.some(c => Math.abs(c - x) < 4) || (goalX != null && Math.abs(goalX - x) < 4);
@@ -1514,7 +1548,7 @@ function buildLevel(def, diff) {
   }
   return {
     id: def.id, name: def.name, theme: LEVEL_THEMES[def.theme] || LEVEL_THEMES.dusk, diff,
-    width, plats, picks: keptPicks, enemySlots: chosen, pits: cuts,
+    width, plats, picks: keptPicks, enemySlots: chosen.concat(flyers), pits: cuts,
     checkpoints: keptCps.map(x => ({ x: x * TILE, y: GROUND_Y * TILE })),
     goal: { x: (goalX != null ? goalX : width - 4) * TILE, y: 12 * TILE, w: 20, h: 96 },
   };
@@ -1560,6 +1594,11 @@ function enemyOnPlat(type, xTile, platY, w, h, extra) {
 function makeEnemies() {
   const sp = level.diff.enemySpeed;
   return level.enemySlots.map((e, i) => {
+    if (e.type === "flyer") {
+      return { type: "flyer", x: e.x * TILE, y: e.hoverY, w: FLY_W, h: FLY_H, vx: e.vx * sp, vy: 0, dir: i % 2 ? -1 : 1,
+        alive: true, minX: e.a * TILE, maxX: e.b * TILE, baseY: e.hoverY, t: i * 1.3, flap: i * 0.7,
+        mode: "patrol", modeT: 0, swoop: 0, cool: 0, prevX: e.x * TILE, prevY: e.hoverY };
+    }
     const hop = e.type === "hopper";
     return enemyOnPlat(e.type, e.x, e.y, hop ? 26 : 28, hop ? 26 : 28, {
       vx: e.vx * sp, dir: i % 2 ? -1 : 1, minX: e.a * TILE, maxX: e.b * TILE,
@@ -2164,6 +2203,8 @@ function updatePlay(dt) {
     e.prevX = e.x;
     e.prevY = e.y;
 
+    if (e.type === "flyer") updateFlyer(e, dt);
+    else {
     if (e.x < e.minX) { e.x = e.minX; e.dir = 1; }
     if (e.x + e.w > e.maxX) { e.x = e.maxX - e.w; e.dir = -1; }
 
@@ -2189,6 +2230,7 @@ function updatePlay(dt) {
         if (e.hopT > (e.hopEvery || 1.1)) { e.vy = -520; e.hopT = 0; }
       }
     }
+    } // walker / hopper
 
     if (!aabb(player, e)) continue;
 
@@ -2211,7 +2253,7 @@ function updatePlay(dt) {
       player.fromStomp = true;
       player.jumpBuf = 0;
       sfx.stomp();
-      spawnParticles(e.x + e.w/2, e.y + e.h/2, e.type === "hopper" ? "#7dff9a" : "#ff8a5b", 12);
+      spawnParticles(e.x + e.w/2, e.y + e.h/2, e.type === "hopper" ? "#7dff9a" : e.type === "flyer" ? "#b48cff" : "#ff8a5b", 12);
     } else {
       hurtPlayer(e.x + e.w/2);
     }
@@ -2246,6 +2288,80 @@ function updatePlay(dt) {
   const target = player.x - W * 0.38;
   cameraX += (target - cameraX) * Math.min(1, 6 * dt);
   cameraX = Math.max(0, Math.min(cameraX, LEVEL_W * TILE - W));
+}
+
+// Flyer: horizontal patrol + sine bob. When the player is near and below it hovers in place for a
+// short tell (fast flap, red eyes), dives gently toward them (never below head height on its floor),
+// holds, rises back and cools down. Stomp from above = kill + bounce; any other touch hurts.
+function updateFlyer(e, dt) {
+  e.t += dt;
+  e.flap += dt * (e.mode === "tell" ? 22 : 9);
+  const pcx = player.x + player.w / 2, ecx = e.x + e.w / 2;
+  const near = Math.abs(pcx - ecx) < FLY_RANGE && player.y + player.h / 2 > e.y + e.h / 2 && hearts > 0;
+  if (e.cool > 0) e.cool -= dt;
+  e.modeT += dt;
+  if (e.mode === "patrol") { if (near && e.cool <= 0) { e.mode = "tell"; e.modeT = 0; } }
+  else if (e.mode === "tell") { if (e.modeT >= FLY_TELL) { e.mode = "dive"; e.modeT = 0; } }
+  else if (e.mode === "dive") { if (e.swoop >= FLY_SWOOP - 0.5 || (!near && e.modeT > 0.3)) { e.mode = "hold"; e.modeT = 0; } }
+  else if (e.mode === "hold") { if (e.modeT >= FLY_HOLD) { e.mode = "rise"; e.modeT = 0; } }
+  else if (e.mode === "rise") { if (e.swoop <= 0.5) { e.swoop = 0; e.mode = "patrol"; e.cool = FLY_COOL; } }
+  const diving = e.mode === "dive" || e.mode === "hold";
+  const want = diving ? Math.min(FLY_SWOOP, Math.max(0, (player.y + player.h / 2) - (e.baseY + e.h / 2))) : 0;
+  const rate = e.mode === "dive" ? FLY_DIVE_V : FLY_RISE_V;
+  e.swoop += Math.sign(want - e.swoop) * Math.min(Math.abs(want - e.swoop), rate * dt);
+  let vx = e.vx * e.dir;
+  if (e.mode === "tell") vx = 0;
+  else if (diving) { const d = pcx - ecx; vx = Math.sign(d) * Math.min(e.vx, Math.abs(d) * 3); if (d) e.dir = Math.sign(d); }
+  e.x += vx * dt;
+  if (e.x < e.minX) { e.x = e.minX; e.dir = 1; }
+  if (e.x + e.w > e.maxX) { e.x = e.maxX - e.w; e.dir = -1; }
+  e.y = e.baseY + Math.sin(e.t * 2.4) * FLY_BOB + e.swoop;
+  e.vy = dt > 0 ? (e.y - e.prevY) / dt : 0;
+}
+
+// 13x10 pixel bat-drone, 2 flap frames (2px per pixel). W wing, w wing edge, B body, b belly, E eye, F fang
+const FLYER_FRAMES = [
+  ["w...........w",
+   "Ww.........wW",
+   "WWw.BBBBB.wWW",
+   ".WWBBBBBBBWW.",
+   "..BBEBBBEBB..",
+   "..BBBbbbBBB..",
+   "...BBbbbBB...",
+   "....BFBFB....",
+   ".............",
+   "............."],
+  [".............",
+   ".............",
+   "....BBBBB....",
+   "...BBBBBBB...",
+   ".wBBEBBBEBBw.",
+   "WWBBBbbbBBBWW",
+   "Ww.BBbbbBB.wW",
+   "w...BFBFB...w",
+   ".............",
+   "............."],
+];
+function drawFlyer(e) {
+  const tell = e.mode === "tell";
+  const pal = { W: "#5a3fb0", w: "#c3adff", B: "#8f6cf2", b: "#c9b8ff", E: tell ? "#ff4a6a" : "#5fe8ff", F: "#ffffff" };
+  const frame = FLYER_FRAMES[Math.floor(e.flap) % 2];
+  const shake = tell ? (Math.floor(e.modeT * 40) % 2 ? 1 : -1) : 0;
+  const ox = Math.round(e.x) + shake, oy = Math.round(e.y);
+  for (let r = 0; r < frame.length; r++) {
+    const row = frame[r];
+    for (let c = 0; c < row.length; c++) {
+      const col = pal[row[c]];
+      if (!col) continue;
+      ctx.fillStyle = col;
+      ctx.fillRect(ox + c * 2, oy + r * 2, 2, 2);
+    }
+  }
+  // soft shadow on the floor below so the swoop reads
+  if (e.mode !== "patrol") {
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    ctx.fillRect(ox + 6, oy + e.h + 2, 14, 2);
+  }
 }
 
 function updateSlot(dt) {
@@ -2422,7 +2538,9 @@ function drawWorld() {
   // enemies
   for (const e of enemies) {
     if (!e.alive || e.x + e.w < viewL || e.x > viewR) continue;
-    if (e.type === "walker") {
+    if (e.type === "flyer") {
+      drawFlyer(e);
+    } else if (e.type === "walker") {
       ctx.fillStyle = "#e85d4c";
       roundRect(e.x, e.y, e.w, e.h, 4);
       ctx.fill();
@@ -3436,7 +3554,13 @@ function renderLevelOverview(n) {
       g.fillStyle = th.grass; g.fillRect(ox + p.x * S, oy + p.y * S, p.w * S, 2);
     }
     for (const [tx, ty] of L.picks) { g.fillStyle = "#ff5a9a"; g.fillRect(ox + tx * S + 1, oy + ty * S, 5, 7); g.fillStyle = "#ffe66d"; g.fillRect(ox + tx * S + 3, oy + ty * S + 2, 1, 3); }
-    for (const e of L.enemySlots) { g.fillStyle = e.type === "hopper" ? "#7cff8a" : "#ff4a4a"; g.fillRect(ox + e.x * S, oy + (e.y - 1) * S + 1, 5, 5); }
+    for (const e of L.enemySlots) {
+      if (e.type === "flyer") { // patrol band + body
+        g.fillStyle = "rgba(180,140,255,0.25)"; g.fillRect(ox + e.a * S, oy + (e.hoverY - FLY_BOB) / TILE * S, (e.b - e.a) * S, (FLY_BOB * 2 + FLY_SWOOP + FLY_H) / TILE * S);
+        g.fillStyle = "#b48cff"; g.fillRect(ox + e.x * S, oy + e.hoverY / TILE * S, 6, 4); continue;
+      }
+      g.fillStyle = e.type === "hopper" ? "#7cff8a" : "#ff4a4a"; g.fillRect(ox + e.x * S, oy + (e.y - 1) * S + 1, 5, 5);
+    }
     for (const c of L.checkpoints) { const cx = ox + c.x / TILE * S; g.fillStyle = "#fff"; g.fillRect(cx, oy + 11 * S, 1, 4 * S); g.fillStyle = "#ff8ec8"; g.fillRect(cx + 1, oy + 11 * S, 7, 5); }
     const gx = ox + L.goal.x / TILE * S; g.fillStyle = "#ffe66d"; g.fillRect(gx, oy + 12 * S, 2, 3 * S); g.fillRect(gx + 2, oy + 12 * S, 8, 6);
     g.restore();
@@ -3444,7 +3568,7 @@ function renderLevelOverview(n) {
     for (let t = r * ROW; t <= Math.min(L.width, (r + 1) * ROW); t += 25) g.fillText(String(t), ox + t * S, oy + rowH + 12);
   }
   g.fillStyle = "#ddd"; g.font = "11px sans-serif";
-  g.fillText("pink = babe drop · red = walker · green = hopper · flag = checkpoint · gold = goal", 20, cv.height - 4);
+  g.fillText("pink = babe drop · red = walker · green = hopper · violet = flyer (+ swoop zone) · flag = checkpoint · gold = goal", 20, cv.height - 4);
   return cv.toDataURL("image/png");
 }
 
@@ -3518,6 +3642,8 @@ window.__HBC = {
   getLevel: () => ({ num: levelNum, name: level.name, width: level.width, diff: level.diff, pits: level.pits,
     platforms: platforms.map(p => ({ ...p })), checkpoints: checkpoints.map(c => ({ ...c })), goal: { ...goal },
     picks: level.picks.slice(), enemySlots: level.enemySlots.map(e => ({ ...e })), checkpointIdx,
+    flyerEnvelopes: level.enemySlots.filter(e => e.type === "flyer").map(e => ({ minX: e.a * TILE, maxX: e.b * TILE, top: e.hoverY - FLY_BOB, bottom: e.hoverY + FLY_BOB + FLY_SWOOP + FLY_H, floorTop: e.floorTop })),
+    fly: { FLY_W, FLY_H, FLY_BOB, FLY_SWOOP, FLY_RANGE, FLY_TELL, FLY_DIVE_V, FLY_RISE_V, FLY_HOLD, FLY_COOL },
     TILE, LEVEL_H, physics: { GRAV, MOVE_ACC, MOVE_MAX, FRICTION, JUMP_V, JUMP_CUT, PLAYER_W, PLAYER_H } }),
   getLevelDefs: () => LEVELS.map(d => d.id),
   getProgress: () => ({ ...progress }),
