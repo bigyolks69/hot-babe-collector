@@ -2378,11 +2378,6 @@ function drawFlyer(e) {
       ctx.fillRect(ox + c * 2, oy + r * 2, 2, 2);
     }
   }
-  // soft shadow on the floor below so the swoop reads
-  if (e.mode !== "patrol") {
-    ctx.fillStyle = "rgba(0,0,0,0.18)";
-    ctx.fillRect(ox + 6, oy + e.h + 2, 14, 2);
-  }
 }
 
 function updateSlot(dt) {
