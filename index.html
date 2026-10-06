@@ -81,11 +81,18 @@
     bottom: max(24px, env(safe-area-inset-bottom));
     width: 96px; height: 96px; font-size: 30px;
   }
-  /* Gallery button top-left so it clears top-right HUD "Babes" and bottom-right tray */
+  /* Collection — top-left pill, below heart row so it clears HUD */
   #tColl  {
-    left: max(16px, env(safe-area-inset-left));
-    top: max(16px, env(safe-area-inset-top));
-    width: 58px; height: 58px; font-size: 18px;
+    left: max(12px, env(safe-area-inset-left));
+    top: max(52px, calc(env(safe-area-inset-top) + 44px));
+    width: auto;
+    min-width: 108px;
+    height: 40px;
+    padding: 0 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
   }
   #fsBtn {
     position: absolute;
@@ -135,7 +142,15 @@
     #tLeft  { left: max(12px, env(safe-area-inset-left)); bottom: max(18px, env(safe-area-inset-bottom)); }
     #tRight { left: calc(max(12px, env(safe-area-inset-left)) + 78px); bottom: max(18px, env(safe-area-inset-bottom)); }
     #tJump  { right: max(12px, env(safe-area-inset-right)); bottom: max(18px, env(safe-area-inset-bottom)); }
-    #tColl  { left: max(12px, env(safe-area-inset-left)); top: max(12px, env(safe-area-inset-top)); width: 52px; height: 52px; font-size: 16px; }
+    #tColl  {
+      left: max(10px, env(safe-area-inset-left));
+      top: max(48px, calc(env(safe-area-inset-top) + 40px));
+      min-width: 100px;
+      height: 36px;
+      padding: 0 12px;
+      border-radius: 18px;
+      font-size: 12px;
+    }
     #fsBtn  { right: max(10px, env(safe-area-inset-right)); top: max(10px, env(safe-area-inset-top)); font-size: 11px; padding: 6px 10px; }
   }
 </style>
@@ -147,7 +162,7 @@
     <button type="button" class="tbtn" id="tLeft" aria-label="Left">◀</button>
     <button type="button" class="tbtn" id="tRight" aria-label="Right">▶</button>
     <button type="button" class="tbtn" id="tJump" aria-label="Jump">▲</button>
-    <button type="button" class="tbtn" id="tColl" aria-label="Babe gallery">C</button>
+    <button type="button" class="tbtn" id="tColl" aria-label="Collection">Collection</button>
   </div>
   <button type="button" id="fsBtn" aria-label="Fullscreen">⛶ Full</button>
   <button type="button" id="muteBtn" aria-label="Mute" title="Mute (M)">🔊</button>
@@ -2093,7 +2108,7 @@ function drawHUD() {
   ctx.fillText("Babes " + unique + "/" + BABE_POOL.length, W - 158, 24);
   ctx.font = "11px sans-serif";
   ctx.fillStyle = "#ffb0d0";
-  ctx.fillText("Total pulls: " + total + "  [C]", W - 158, 38);
+  ctx.fillText("Total pulls: " + total + (isTouch ? "  [Collection]" : "  [C]"), W - 158, 38);
 
   // studio tag
   ctx.fillStyle = "rgba(255,255,255,0.25)";
@@ -2455,7 +2470,9 @@ function drawTitle() {
 
   ctx.fillStyle = "#999";
   ctx.font = "12px sans-serif";
-  ctx.fillText("←→ / A D move  •  Space / W / ↑ jump  •  C babe gallery", W/2, 420);
+  ctx.fillText(isTouch
+    ? "On-screen ← → Jump  •  Collection"
+    : "←→ / A D move  •  Space / W / ↑ jump  •  C babe gallery", W/2, 420);
   if (isTouch) {
     ctx.fillStyle = "#c8a0b8";
     ctx.font = "13px sans-serif";
@@ -2739,7 +2756,7 @@ function drawWin() {
   ctx.fillText(isTouch ? "Tap to Restart" : "Press R or Enter to Restart", W / 2, H - 48);
   ctx.fillStyle = "#aaa";
   ctx.font = "13px sans-serif";
-  ctx.fillText("Press C to view full babe gallery", W / 2, H - 26);
+  ctx.fillText(isTouch ? "Open Collection to view your babes" : "Press C to view full babe gallery", W / 2, H - 26);
 }
 
 function frame(dt) {

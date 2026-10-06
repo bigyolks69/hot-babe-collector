@@ -16,7 +16,7 @@ Single-file game: open `index.html` in Chrome or Safari (double-click works offl
 | Start | Enter / Space on title |
 | Restart (after win) | R or Enter |
 
-On touch devices, large on-screen buttons appear (← → jump, C gallery). Portrait and landscape both work — title screen notes you can use either. Tap title/win to start/restart; gallery supports swipe scroll and tap filters.
+On touch devices, large on-screen buttons appear (← → Jump, Collection). Portrait and landscape both work — title screen notes you can use either. Tap title/win to start/restart; gallery supports swipe scroll and tap filters.
 
 ### Mobile / share link
 Open `index.html` (or host the file) on iOS Safari / Android Chrome. Viewport is locked (no zoom); WebAudio unlocks on first tap; optional fullscreen button. Add to Home Screen friendly (`apple-mobile-web-app-capable`).
