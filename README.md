@@ -23,6 +23,7 @@ Open `index.html` (or host the file) on iOS Safari / Android Chrome. Viewport is
 
 ## Design notes (prototype)
 
+- **Hero**: 32×48 pixel-art sprite (`art/hero/pixel/`), crisp nearest-neighbor; hitbox 18×44 (opaque inset). Idle breath / run sheet / jump / hurt / dead. Falls back to shapes if PNGs fail to load.
 - **Babe pool**: **30** data-driven placeholders in `BABE_POOL` (append entries to grow). Shared **3:4** aspect (`CARD_ASPECT = 72/96`).
 - **HUD**: bottom-right 5-slot window into the sorted 30-babe list (`Babes N/30`, icon-only 3:4); slides to focus gains/losses with a brief highlight.
 - **Gallery (C)**: scrollable grid, rarity→name sort, filters All / Owned / Missing / Common / Rare / Epic / Legendary, click for detail.

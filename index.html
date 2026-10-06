@@ -140,6 +140,145 @@ const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 const W = canvas.width, H = canvas.height;
 
+// ---------- Pixel-art hero (32×48, faces right; flip for left) ----------
+// Set true to use hero_idle_side.png for idle instead of front-facing breath cycle
+const HERO_IDLE_USE_SIDE = false;
+const HERO_SW = 32;
+const HERO_SH = 48;
+// Opaque idle ≈ (1,0)–(28,47). Slim collision inset; feet = sprite bottom.
+const HERO_INSET_X = 7;  // → hitbox width 18
+const HERO_INSET_TOP = 4; // → hitbox height 44
+const PLAYER_W = HERO_SW - HERO_INSET_X * 2; // 18
+const PLAYER_H = HERO_SH - HERO_INSET_TOP;   // 44
+const HERO_IDLE_MS = 500;
+const HERO_RUN_MS = 90;
+const HERO_DEAD_MS = 260;
+
+const heroSprites = {
+  ready: false,
+  failed: false,
+  idle: [null, null],      // front breath
+  idleSide: null,
+  runSheet: null,          // 192×48, 6 frames
+  jumpUp: null,
+  jumpFall: null,
+  hurt: null,
+  dead: [null, null],
+};
+
+function loadImg(src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+async function preloadHeroSprites() {
+  const base = "art/hero/pixel/";
+  const [
+    idle0, idle1, idleSide, runSheet,
+    jumpUp, jumpFall, hurt, dead0, dead1,
+  ] = await Promise.all([
+    loadImg(base + "hero_idle.png"),
+    loadImg(base + "hero_idle_1.png"),
+    loadImg(base + "hero_idle_side.png"),
+    loadImg(base + "hero_run_sheet.png"),
+    loadImg(base + "hero_jump_up.png"),
+    loadImg(base + "hero_jump_fall.png"),
+    loadImg(base + "hero_hurt.png"),
+    loadImg(base + "hero_dead_0.png"),
+    loadImg(base + "hero_dead_1.png"),
+  ]);
+  heroSprites.idle = [idle0, idle1];
+  heroSprites.idleSide = idleSide;
+  heroSprites.runSheet = runSheet;
+  heroSprites.jumpUp = jumpUp;
+  heroSprites.jumpFall = jumpFall;
+  heroSprites.hurt = hurt;
+  heroSprites.dead = [dead0, dead1];
+  const need = [idle0, idle1, runSheet, jumpUp, jumpFall, hurt, dead0, dead1];
+  heroSprites.failed = need.some(im => !im);
+  heroSprites.ready = !heroSprites.failed;
+  return heroSprites.ready;
+}
+
+// Test/screenshot pose override: "idle"|"run"|"jumpUp"|"jumpFall"|"hurt"|"dead"|null
+let debugHeroPose = null;
+
+function heroFrameForState() {
+  const pose = debugHeroPose || (
+    state === "dead" ? "dead" :
+    player.stun > 0 ? "hurt" :
+    !player.onGround ? (player.vy < 0 ? "jumpUp" : "jumpFall") :
+    Math.abs(player.vx) > 30 ? "run" : "idle"
+  );
+  if (pose === "dead") {
+    const fi = Math.floor((performance.now() / HERO_DEAD_MS) % 2);
+    return { img: heroSprites.dead[fi], sx: 0, sy: 0, sw: HERO_SW, sh: HERO_SH };
+  }
+  if (pose === "hurt") {
+    return { img: heroSprites.hurt, sx: 0, sy: 0, sw: HERO_SW, sh: HERO_SH };
+  }
+  if (pose === "jumpUp") {
+    return { img: heroSprites.jumpUp, sx: 0, sy: 0, sw: HERO_SW, sh: HERO_SH };
+  }
+  if (pose === "jumpFall") {
+    return { img: heroSprites.jumpFall, sx: 0, sy: 0, sw: HERO_SW, sh: HERO_SH };
+  }
+  if (pose === "run") {
+    const fi = Math.floor((performance.now() / HERO_RUN_MS) % 6);
+    return { img: heroSprites.runSheet, sx: fi * HERO_SW, sy: 0, sw: HERO_SW, sh: HERO_SH };
+  }
+  // idle
+  if (HERO_IDLE_USE_SIDE && heroSprites.idleSide) {
+    return { img: heroSprites.idleSide, sx: 0, sy: 0, sw: HERO_SW, sh: HERO_SH };
+  }
+  const fi = Math.floor((performance.now() / HERO_IDLE_MS) % 2);
+  return { img: heroSprites.idle[fi], sx: 0, sy: 0, sw: HERO_SW, sh: HERO_SH };
+}
+
+function drawHeroSprite() {
+  const fr = heroFrameForState();
+  if (!fr.img) return false;
+  const px = Math.floor(player.x + player.w / 2);
+  const py = Math.floor(player.y + player.h);
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.translate(px, py);
+  if (player.facing < 0) ctx.scale(-1, 1);
+  ctx.drawImage(fr.img, fr.sx, fr.sy, fr.sw, fr.sh, -Math.floor(HERO_SW / 2), -HERO_SH, HERO_SW, HERO_SH);
+  ctx.restore();
+  return true;
+}
+
+function drawPlayerFallback() {
+  const px = player.x, py = player.y;
+  ctx.fillStyle = "#6ec8ff";
+  roundRect(px, py + 8, player.w, player.h - 8, 4);
+  ctx.fill();
+  ctx.fillStyle = "#ffdbb0";
+  ctx.fillRect(px + 2, py, player.w - 4, 14);
+  ctx.fillStyle = "#ff5a9a";
+  ctx.fillRect(px + 1, py - 2, player.w - 2, 6);
+  ctx.fillStyle = "#222";
+  const ex = player.facing >= 0 ? px + player.w - 8 : px + 4;
+  ctx.fillRect(ex, py + 5, 3, 3);
+  const leg = Math.sin(player.anim) * (player.onGround && Math.abs(player.vx) > 30 ? 4 : 0);
+  ctx.fillStyle = "#3a6a9a";
+  ctx.fillRect(px + 2, py + player.h - 8, 5, 8 + leg);
+  ctx.fillRect(px + player.w - 7, py + player.h - 8, 5, 8 - leg);
+}
+
+function drawPlayer() {
+  // Invulnerability flash (also during death we still draw)
+  if (state !== "dead" && player.flash > 0 && Math.floor(player.flash * 12) % 2 !== 0) return;
+  if (heroSprites.ready && drawHeroSprite()) return;
+  drawPlayerFallback();
+}
+
+
 // ---------- Tiny WebAudio SFX (no files) ----------
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
 let actx = null;
@@ -311,6 +450,7 @@ function canvasCoords(clientX, clientY) {
 function handleCanvasTap(sx, sy) {
   ensureAudio();
   if (state === "title") {
+    if (!heroSprites.ready && !heroSprites.failed) return;
     resetLevel(true);
     state = "play";
     return;
@@ -645,9 +785,9 @@ const platforms = [
 
 // Checkpoints (world px)
 const checkpoints = [
-  { x: 2*TILE, y: 14*TILE },
-  { x: 42*TILE, y: 14*TILE },
-  { x: 82*TILE, y: 14*TILE },
+  { x: 2 * TILE, y: 15 * TILE },
+  { x: 42 * TILE, y: 15 * TILE },
+  { x: 82 * TILE, y: 15 * TILE },
 ];
 
 // Coins (~18)
@@ -745,11 +885,11 @@ let hudTray = {
 let deathGridScroll = 0; // snap-scroll so lost babe is visible
 
 const player = {
-  x: 64, y: 14*TILE - 40, w: 24, h: 36,
+  x: 64, y: 15 * TILE - PLAYER_H, w: PLAYER_W, h: PLAYER_H,
   vx: 0, vy: 0, onGround: false,
   facing: 1, coyote: 0, jumpBuf: 0,
   anim: 0, flash: 0, stun: 0, stompGrace: 0, fromStomp: false,
-  prevX: 64, prevY: 14 * TILE - 40,
+  prevX: 64, prevY: 15 * TILE - PLAYER_H,
 };
 
 function resetLevel(full) {
@@ -1352,29 +1492,8 @@ function drawWorld() {
   ctx.arc(goal.x + 2, goal.y, 6, 0, Math.PI*2);
   ctx.fill();
 
-  // player
-  if (player.flash <= 0 || Math.floor(player.flash * 12) % 2 === 0) {
-    const px = player.x, py = player.y;
-    // body
-    ctx.fillStyle = "#6ec8ff";
-    roundRect(px, py + 8, player.w, player.h - 8, 4);
-    ctx.fill();
-    // head
-    ctx.fillStyle = "#ffdbb0";
-    ctx.fillRect(px + 4, py, 16, 14);
-    // hair
-    ctx.fillStyle = "#ff5a9a";
-    ctx.fillRect(px + 3, py - 2, 18, 6);
-    // eye
-    ctx.fillStyle = "#222";
-    const ex = player.facing >= 0 ? px + 14 : px + 6;
-    ctx.fillRect(ex, py + 5, 3, 3);
-    // legs
-    const leg = Math.sin(player.anim) * (player.onGround && Math.abs(player.vx)>30 ? 4 : 0);
-    ctx.fillStyle = "#3a6a9a";
-    ctx.fillRect(px + 4, py + player.h - 8, 6, 8 + leg);
-    ctx.fillRect(px + 14, py + player.h - 8, 6, 8 - leg);
-  }
+  // player (pixel hero or fallback shapes)
+  drawPlayer();
 
   // particles in world space
   for (const p of particles) {
@@ -1849,7 +1968,13 @@ function drawTitle() {
   ctx.fillStyle = "#ffe66d";
   ctx.font = "bold 20px sans-serif";
   const blink = Math.sin(performance.now()/300) > 0;
-  if (blink) ctx.fillText(isTouch ? "Tap to Start" : "Press Enter / Space to Start", W/2, 360);
+  if (!heroSprites.ready && !heroSprites.failed) {
+    ctx.fillStyle = "#ffb0d0";
+    ctx.font = "bold 18px sans-serif";
+    ctx.fillText("Loading hero…", W/2, 360);
+  } else if (blink) {
+    ctx.fillText(isTouch ? "Tap to Start" : "Press Enter / Space to Start", W/2, 360);
+  }
 
   ctx.fillStyle = "#999";
   ctx.font = "12px sans-serif";
@@ -2142,7 +2267,7 @@ function drawWin() {
 function frame(dt) {
   if (state === "title") {
     drawTitle();
-    if (justPressed[" "] || justPressed["enter"]) {
+    if ((justPressed[" "] || justPressed["enter"]) && (heroSprites.ready || heroSprites.failed)) {
       resetLevel(true);
       state = "play";
       ensureAudio();
@@ -2227,10 +2352,16 @@ fit();
 
 resetLevel(true);
 state = "title";
+preloadHeroSprites().then(ok => {
+  if (!ok) console.warn("[HBC] Hero sprites failed to load — using drawn fallback");
+});
 requestAnimationFrame(loop);
 
 // Expose for headless testing
 window.__HBC = {
+  getHero: () => heroSprites,
+  getPlayerSize: () => ({ w: player.w, h: player.h, sw: HERO_SW, sh: HERO_SH }),
+  setDebugHeroPose: (p) => { debugHeroPose = p; },
   getState: () => state,
   setState: (s) => { state = s; },
   getPlayer: () => player,

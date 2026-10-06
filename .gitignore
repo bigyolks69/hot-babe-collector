@@ -6,4 +6,17 @@ package.json
 .DS_Store
 playwright-report/
 test-results/
-art/
+
+# Scratch art — keep only the shipped hero pixel frames the game loads
+art/**
+!art/hero/
+!art/hero/pixel/
+!art/hero/pixel/hero_idle.png
+!art/hero/pixel/hero_idle_1.png
+!art/hero/pixel/hero_idle_side.png
+!art/hero/pixel/hero_run_sheet.png
+!art/hero/pixel/hero_jump_up.png
+!art/hero/pixel/hero_jump_fall.png
+!art/hero/pixel/hero_hurt.png
+!art/hero/pixel/hero_dead_0.png
+!art/hero/pixel/hero_dead_1.png
