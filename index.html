@@ -1023,9 +1023,9 @@ function updatePlay(dt) {
       player.jumpBuf = 0;
       sfx.jump();
     }
-    // variable jump height
+    // variable jump height (skip during stompGrace so Mario bounce isn't eaten)
     const jumpHeld = keys[" "] || keys["arrowup"] || keys["w"];
-    if (!jumpHeld && player.vy < 0) {
+    if (!jumpHeld && player.vy < 0 && player.stompGrace <= 0) {
       player.vy *= JUMP_CUT;
     }
   } else {
