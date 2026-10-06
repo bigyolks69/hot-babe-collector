@@ -20,3 +20,9 @@ art/**
 !art/hero/pixel/hero_hurt.png
 !art/hero/pixel/hero_dead_0.png
 !art/hero/pixel/hero_dead_1.png
+
+# Audio scratch — ship only cry one-shot (+ loop ogg kept available)
+audio/**
+!audio/cry_death.ogg
+!audio/cry_death.mp3
+!audio/cry_death_loop.ogg

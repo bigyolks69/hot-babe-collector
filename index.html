@@ -105,6 +105,29 @@
   }
   #fsBtn.show { display: block; }
   #fsBtn:active { background: rgba(255,120,180,0.28); color: rgba(255,255,255,0.55); border-color: rgba(255,255,255,0.45); }
+  #muteBtn {
+    position: absolute;
+    right: max(12px, env(safe-area-inset-right));
+    top: max(48px, calc(env(safe-area-inset-top) + 44px));
+    z-index: 12;
+    pointer-events: auto;
+    width: 40px; height: 40px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.30);
+    background: rgba(255,255,255,0.10);
+    color: rgba(255,255,255,0.45);
+    font-size: 18px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: none;
+    cursor: pointer;
+  }
+  #muteBtn:active { background: rgba(255,120,180,0.28); color: rgba(255,255,255,0.55); border-color: rgba(255,255,255,0.45); }
+  @media (orientation: portrait) {
+    #muteBtn { right: max(10px, env(safe-area-inset-right)); top: max(44px, calc(env(safe-area-inset-top) + 40px)); width: 36px; height: 36px; font-size: 16px; }
+  }
   /* Portrait: keep controls usable without blocking the letterboxed canvas */
   @media (orientation: portrait) {
     .tbtn { width: 72px; height: 72px; font-size: 24px; }
@@ -127,6 +150,7 @@
     <button type="button" class="tbtn" id="tColl" aria-label="Babe gallery">C</button>
   </div>
   <button type="button" id="fsBtn" aria-label="Fullscreen">⛶ Full</button>
+  <button type="button" id="muteBtn" aria-label="Mute" title="Mute (M)">🔊</button>
 </div>
 <script>
 "use strict";
@@ -153,6 +177,9 @@ const PLAYER_H = HERO_SH - HERO_INSET_TOP;   // 44
 const HERO_IDLE_MS = 500;
 const HERO_RUN_MS = 90;
 const HERO_DEAD_MS = 260;
+const DEATH_CRY_SCALE = 6; // 32×48 → 192×288
+const DEATH_FLASH_HOLD = 0.08; // full white before black cry
+const DEATH_FLASH_FADE = 0.10; // white → black+cry
 
 const heroSprites = {
   ready: false,
@@ -215,7 +242,11 @@ function heroFrameForState() {
     Math.abs(player.vx) > 30 ? "run" : "idle"
   );
   if (pose === "dead") {
-    const fi = Math.floor((performance.now() / HERO_DEAD_MS) % 2);
+    // When dying: animT reset to 0 as black cry (+audio) starts — synced to 260ms beats
+    const ms = (state === "dying" && deathCry && deathCry.animStarted)
+      ? deathCry.animT * 1000
+      : performance.now();
+    const fi = Math.floor((ms / HERO_DEAD_MS) % 2);
     return { img: heroSprites.dead[fi], sx: 0, sy: 0, sw: HERO_SW, sh: HERO_SH };
   }
   if (pose === "hurt") {
@@ -279,16 +310,42 @@ function drawPlayer() {
 }
 
 
-// ---------- Tiny WebAudio SFX (no files) ----------
+// ---------- WebAudio SFX + Music Macky death cry ----------
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
 let actx = null;
+let masterGain = null;
+const MUTE_KEY = "hbc_muted";
+let muted = false;
+try { muted = localStorage.getItem(MUTE_KEY) === "1"; } catch (_) {}
+
 function ensureAudio() {
-  if (!actx) actx = new AudioCtx();
+  if (!actx) {
+    actx = new AudioCtx();
+    masterGain = actx.createGain();
+    masterGain.gain.value = muted ? 0 : 1;
+    masterGain.connect(actx.destination);
+  }
   if (actx.state === "suspended") actx.resume();
+  if (masterGain) masterGain.gain.value = muted ? 0 : 1;
 }
+
+function setMuted(v) {
+  muted = !!v;
+  try { localStorage.setItem(MUTE_KEY, muted ? "1" : "0"); } catch (_) {}
+  if (masterGain) masterGain.gain.value = muted ? 0 : 1;
+  if (cryHtmlAudio) cryHtmlAudio.muted = muted;
+  if (cryLoopHtmlAudio) cryLoopHtmlAudio.muted = muted;
+  const btn = document.getElementById("muteBtn");
+  if (btn) {
+    btn.textContent = muted ? "🔇" : "🔊";
+    btn.setAttribute("aria-label", muted ? "Unmute" : "Mute");
+  }
+}
+
 function beep(freq, dur, type, vol, slide) {
   try {
     ensureAudio();
+    if (muted) return;
     const t0 = actx.currentTime;
     const o = actx.createOscillator();
     const g = actx.createGain();
@@ -297,7 +354,7 @@ function beep(freq, dur, type, vol, slide) {
     if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, slide), t0 + dur);
     g.gain.setValueAtTime(vol || 0.08, t0);
     g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
-    o.connect(g); g.connect(actx.destination);
+    o.connect(g); g.connect(masterGain || actx.destination);
     o.start(t0); o.stop(t0 + dur + 0.02);
   } catch (_) {}
 }
@@ -311,6 +368,137 @@ const sfx = {
   win:   () => { [523,659,784,1047].forEach((f,i) => setTimeout(() => beep(f, 0.18, "square", 0.06), i*120)); },
   new:   () => { beep(700, 0.1, "square", 0.06); setTimeout(() => beep(1050, 0.2, "square", 0.06), 100); },
 };
+
+// Death cry (Music Macky): 1.500s one-shot, sobs on 260ms beats
+const cryAudio = {
+  oneshotBuf: null,
+  loopBuf: null,       // available; only if dying ever exceeds 1.5s
+  oneshotUrl: null,
+  loopUrl: null,
+  ready: false,
+  source: null,        // active BufferSource
+  loopSource: null,
+  startedAt: null,     // actx.currentTime or performance when started
+  playing: false,
+};
+let cryHtmlAudio = null;
+let cryLoopHtmlAudio = null;
+
+function pickAudioUrl(baseNoExt) {
+  const probe = document.createElement("audio");
+  const ogg = probe.canPlayType('audio/ogg; codecs="vorbis"') || probe.canPlayType("audio/ogg");
+  if (ogg && ogg !== "no") return baseNoExt + ".ogg";
+  return baseNoExt + ".mp3";
+}
+
+async function fetchDecode(url) {
+  ensureAudio();
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("fetch " + url + " " + res.status);
+  const ab = await res.arrayBuffer();
+  return await actx.decodeAudioData(ab.slice(0));
+}
+
+async function preloadCryAudio() {
+  cryAudio.oneshotUrl = pickAudioUrl("audio/cry_death");
+  cryAudio.loopUrl = pickAudioUrl("audio/cry_death_loop");
+  // Prefer OGG path when supported; pickAudioUrl already chose
+  try {
+    ensureAudio();
+    cryAudio.oneshotBuf = await fetchDecode(cryAudio.oneshotUrl);
+    try { cryAudio.loopBuf = await fetchDecode(cryAudio.loopUrl); } catch (_) { cryAudio.loopBuf = null; }
+    cryAudio.ready = true;
+  } catch (e) {
+    // file:// or decode failure → HTMLAudioElement fallback
+    console.warn("[HBC] WebAudio cry decode failed, using HTMLAudioElement", e && e.message);
+    cryHtmlAudio = new Audio(cryAudio.oneshotUrl);
+    cryHtmlAudio.preload = "auto";
+    cryLoopHtmlAudio = new Audio(cryAudio.loopUrl);
+    cryLoopHtmlAudio.preload = "auto";
+    cryLoopHtmlAudio.loop = true;
+    cryAudio.ready = true;
+  }
+}
+
+function stopDeathCry() {
+  try {
+    if (cryAudio.source) {
+      try { cryAudio.source.stop(0); } catch (_) {}
+      cryAudio.source.disconnect();
+      cryAudio.source = null;
+    }
+    if (cryAudio.loopSource) {
+      try { cryAudio.loopSource.stop(0); } catch (_) {}
+      cryAudio.loopSource.disconnect();
+      cryAudio.loopSource = null;
+    }
+  } catch (_) {}
+  if (cryHtmlAudio) { try { cryHtmlAudio.pause(); cryHtmlAudio.currentTime = 0; } catch (_) {} }
+  if (cryLoopHtmlAudio) { try { cryLoopHtmlAudio.pause(); cryLoopHtmlAudio.currentTime = 0; } catch (_) {} }
+  cryAudio.playing = false;
+  cryAudio.startedAt = null;
+}
+
+/** Start one-shot once; no stack. Syncs with dead-anim frame 0. */
+function playDeathCry() {
+  if (cryAudio.playing) return; // no double-play
+  ensureAudio();
+  stopDeathCry(); // clear any stray
+  cryAudio.playing = true;
+  const wall = performance.now();
+  try {
+    if (cryAudio.oneshotBuf && actx) {
+      const src = actx.createBufferSource();
+      src.buffer = cryAudio.oneshotBuf;
+      src.connect(masterGain || actx.destination);
+      src.onended = () => {
+        if (cryAudio.source === src) {
+          cryAudio.source = null;
+          cryAudio.playing = false;
+        }
+      };
+      cryAudio.source = src;
+      cryAudio.startedAt = actx.currentTime;
+      src.start(0);
+      console.log("[HBC] cry_death start (WebAudio)", { wallMs: wall, ctxT: cryAudio.startedAt, animT: 0 });
+      return;
+    }
+  } catch (e) {
+    console.warn("[HBC] cry BufferSource failed", e);
+  }
+  // HTMLAudio fallback
+  if (!cryHtmlAudio) cryHtmlAudio = new Audio(cryAudio.oneshotUrl || "audio/cry_death.mp3");
+  cryHtmlAudio.muted = muted;
+  cryHtmlAudio.currentTime = 0;
+  cryAudio.startedAt = wall / 1000;
+  const p = cryHtmlAudio.play();
+  if (p && p.catch) p.catch(() => {});
+  console.log("[HBC] cry_death start (HTMLAudio)", { wallMs: wall, animT: 0 });
+}
+
+function maybeStartCryLoop() {
+  // Only if dying somehow exceeds one-shot length
+  if (!deathCry || deathCry.t < 1.5 || cryAudio.loopSource || (cryLoopHtmlAudio && !cryLoopHtmlAudio.paused)) return;
+  ensureAudio();
+  try {
+    if (cryAudio.loopBuf && actx) {
+      const src = actx.createBufferSource();
+      src.buffer = cryAudio.loopBuf;
+      src.loop = true;
+      src.connect(masterGain || actx.destination);
+      cryAudio.loopSource = src;
+      src.start(0);
+      console.log("[HBC] cry_death_loop start (overflow)");
+      return;
+    }
+  } catch (_) {}
+  if (cryLoopHtmlAudio) {
+    cryLoopHtmlAudio.muted = muted;
+    cryLoopHtmlAudio.currentTime = 0;
+    const p = cryLoopHtmlAudio.play();
+    if (p && p.catch) p.catch(() => {});
+  }
+}
 
 // ---------- Babe pool (data-driven; grow by appending entries) ----------
 const RARITIES = [
@@ -415,7 +603,7 @@ const keys = Object.create(null);
 const justPressed = Object.create(null);
 window.addEventListener("keydown", e => {
   const k = e.key.toLowerCase();
-  if (["arrowup","arrowdown","arrowleft","arrowright"," ","w","a","s","d","c","r","escape","enter"].includes(k) || e.code === "Space") {
+  if (["arrowup","arrowdown","arrowleft","arrowright"," ","w","a","s","d","c","r","m","escape","enter"].includes(k) || e.code === "Space") {
     e.preventDefault();
   }
   const code = e.code === "Space" ? " " : k;
@@ -558,6 +746,18 @@ fsBtn.addEventListener("click", e => {
   if (!document.fullscreenElement && root.requestFullscreen) root.requestFullscreen().catch(() => {});
   else if (document.exitFullscreen) document.exitFullscreen();
 });
+const muteBtn = document.getElementById("muteBtn");
+setMuted(muted); // sync icon
+muteBtn.addEventListener("click", e => {
+  e.preventDefault();
+  ensureAudio();
+  setMuted(!muted);
+});
+muteBtn.addEventListener("touchstart", e => {
+  e.preventDefault();
+  ensureAudio();
+  setMuted(!muted);
+}, { passive: false });
 window.addEventListener("orientationchange", () => {
   setTimeout(() => fit(), 200);
 });
@@ -902,6 +1102,7 @@ function resetLevel(full) {
   slotQueue = 0;
   loseAnim = null;
   deathCry = null;
+  stopDeathCry();
   hearts = 3;
   invuln = 0;
   if (full) {
@@ -1062,7 +1263,10 @@ function onHeartsZero() {
   }
   seatPlayerForDeathCry();
   // ~1.5s black-screen zoomed cry before Ouch; enemies frozen, no input, no re-hit
-  deathCry = { t: 0, dur: 1.5, lostName, lostId, lostPrevCount };
+  deathCry = {
+    t: 0, dur: 1.5, lostName, lostId, lostPrevCount,
+    animT: 0, animStarted: false, cryStarted: false,
+  };
   loseAnim = null;
   invuln = 99; // belt-and-suspenders vs any stray collision
   if (lostId) focusHudOnBabe(lostId);
@@ -1071,6 +1275,7 @@ function onHeartsZero() {
 }
 
 function beginOuchScreen() {
+  stopDeathCry();
   if (!deathCry) {
     state = "dead";
     loseAnim = { t: 0, name: null, lostId: null, lostPrevCount: 0, dur: 2.2 };
@@ -1092,14 +1297,20 @@ function updateDying(dt) {
   deathCry.t += dt;
   player.vx = 0;
   player.vy = 0;
-  // Enemies frozen (no update) — cannot re-hit; black cry screen handles presentation
+  // Start cry audio + dead-anim frame 0 exactly when black cry screen begins (after white flash hold)
+  if (!deathCry.cryStarted && deathCry.t >= DEATH_FLASH_HOLD) {
+    deathCry.cryStarted = true;
+    deathCry.animStarted = true;
+    deathCry.animT = 0;
+    playDeathCry();
+  }
+  if (deathCry.animStarted) deathCry.animT += dt;
+  maybeStartCryLoop(); // only if somehow past 1.5s
+  // Enemies frozen (no update) — cannot re-hit
   if (deathCry.t >= deathCry.dur) beginOuchScreen();
 }
 
 /** Full-screen black + zoomed cry loop (integer scale, crisp). */
-const DEATH_CRY_SCALE = 6; // 32×48 → 192×288
-const DEATH_FLASH_HOLD = 0.08; // full white
-const DEATH_FLASH_FADE = 0.10; // white → black+cry
 function drawDyingCry() {
   const t = deathCry ? deathCry.t : 0;
   // Phase 1: solid white flash (covers everything)
@@ -1417,6 +1628,7 @@ function resetAfterDeath() {
   hearts = 3;
   invuln = 1.5;
   deathCry = null;
+  stopDeathCry();
   const cp = checkpoints[checkpointIdx];
   player.x = cp.x; player.y = cp.y - player.h;
   player.vx = 0; player.vy = 0;
@@ -2354,6 +2566,7 @@ function drawWin() {
 }
 
 function frame(dt) {
+  if (justPressed["m"]) { ensureAudio(); setMuted(!muted); }
   if (state === "title") {
     drawTitle();
     if ((justPressed[" "] || justPressed["enter"]) && (heroSprites.ready || heroSprites.failed)) {
@@ -2451,6 +2664,9 @@ state = "title";
 preloadHeroSprites().then(ok => {
   if (!ok) console.warn("[HBC] Hero sprites failed to load — using drawn fallback");
 });
+preloadCryAudio().then(() => {
+  console.log("[HBC] cry audio ready", { oneshot: cryAudio.oneshotUrl, loop: cryAudio.loopUrl, webaudio: !!cryAudio.oneshotBuf });
+}).catch(e => console.warn("[HBC] cry audio preload", e));
 requestAnimationFrame(loop);
 
 // Expose for headless testing
@@ -2490,6 +2706,17 @@ window.__HBC = {
   },
   getLoseAnim: () => loseAnim,
   getDeathCry: () => deathCry,
+  getCryAudio: () => ({
+    playing: cryAudio.playing,
+    startedAt: cryAudio.startedAt,
+    ready: cryAudio.ready,
+    oneshotUrl: cryAudio.oneshotUrl,
+    hasBuf: !!cryAudio.oneshotBuf,
+    muted,
+  }),
+  stopDeathCry,
+  playDeathCry,
+  setMuted,
   setLoseAnimT: (v) => { if (loseAnim) loseAnim.t = v; },
   getLostXStroke: () => LOST_X_STROKE,
   getCenteredCard: () => {
