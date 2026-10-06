@@ -385,14 +385,15 @@ const checkpoints = [
 
 // Coins (~18)
 function makeCoins() {
-  // Placed just above reachable platform tops (grabbed with a normal jump)
+  // Sparse set (~1/4 of prior 22): rare, rewarding, all reachable
+  // [tileX, tileY] — just above platform tops
   const spots = [
-    [4,13],[8,13],[12,13],
-    [22,11],[28,9],[35,11],
-    [43,13],[47,11],[50,9],[54,7],[58,5],
-    [57,13],[66,11],[71,9],[76,11],
-    [85,11],[89,9],[93,11],
-    [102,13],[111,11],[121,11],[124,13],
+    [8, 13],   // near start (easy)
+    [28, 9],   // early high stair (optional height)
+    [58, 5],   // peak of high ledge route (hardest optional)
+    [71, 9],   // over the pit floating platform
+    [89, 9],   // post-pit high ledge
+    [121, 11], // near the goal / end perch
   ];
   return spots.map(([tx,ty]) => ({
     x: tx*TILE + 8, y: ty*TILE + 4, w: 16, h: 20,

@@ -18,6 +18,7 @@ On touch devices, on-screen buttons appear (← → jump C).
 
 ## Design notes (prototype)
 
+- **Collectibles**: **6** card-coins in the level (sparse: start, optional highs, pit, end). Respawns on death.
 - **Coins → cards**: touching a coin runs a ~1.2s slot/lottery roll panel at the top as an **overlay** — gameplay does **not** pause (move, jump, enemies, physics, camera all keep going). Extra coins touched during a roll are **queued** (queue count shown). The strip eases onto a **pre-planted** result card (no end snap). Short reveal (~0.275s) then `NEW!` / `DUPE` callout (~0.4s). Hits during a roll work normally; if you die mid-roll, the roll (and queue) still finish and grant cards; the lost card is picked from cards you already owned.
 - **Hearts**: 3 HP. Monster contact = −1 heart, knockback + invulnerability flash. Stomp from above to defeat enemies.
 - **Hearts → 0**: lose one random collected card (`LOST: <name>`), hearts reset to 3, respawn at last checkpoint. **All level coins/cards respawn** on that respawn.
