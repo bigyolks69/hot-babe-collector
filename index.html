@@ -55,20 +55,25 @@
     pointer-events: auto;
     width: 78px; height: 78px;
     border-radius: 50%;
-    background: rgba(255,255,255,0.22);
-    border: 3px solid rgba(255,255,255,0.4);
-    color: #fff;
+    background: rgba(255,255,255,0.10); /* ~90% transparent fill */
+    border: 3px solid rgba(255,255,255,0.30); /* ~70% transparent outline */
+    color: rgba(255,255,255,0.30); /* ~70% transparent glyph */
     font-size: 26px;
     font-weight: bold;
     display: flex;
     align-items: center;
     justify-content: center;
-    backdrop-filter: blur(4px);
+    backdrop-filter: none;
     -webkit-user-select: none;
     user-select: none;
     touch-action: none;
   }
-  .tbtn:active, .tbtn.active { background: rgba(255,120,180,0.5); transform: scale(0.96); }
+  .tbtn:active, .tbtn.active {
+    background: rgba(255,120,180,0.28);
+    border-color: rgba(255,255,255,0.45);
+    color: rgba(255,255,255,0.55);
+    transform: scale(0.96);
+  }
   #tLeft  { left: max(16px, env(safe-area-inset-left)); bottom: max(24px, env(safe-area-inset-bottom)); }
   #tRight { left: calc(max(16px, env(safe-area-inset-left)) + 90px); bottom: max(24px, env(safe-area-inset-bottom)); }
   #tJump  {
@@ -90,15 +95,16 @@
     pointer-events: auto;
     padding: 8px 12px;
     border-radius: 8px;
-    border: 1px solid rgba(255,255,255,0.35);
-    background: rgba(0,0,0,0.45);
-    color: #fff;
+    border: 1px solid rgba(255,255,255,0.30);
+    background: rgba(255,255,255,0.10);
+    color: rgba(255,255,255,0.30);
     font-size: 12px;
     font-weight: bold;
     display: none;
     touch-action: none;
   }
   #fsBtn.show { display: block; }
+  #fsBtn:active { background: rgba(255,120,180,0.28); color: rgba(255,255,255,0.55); border-color: rgba(255,255,255,0.45); }
   #rotateHint {
     display: none;
     position: absolute;
@@ -1484,65 +1490,67 @@ function drawHUD() {
 
 function drawSlot() {
   // Overlay only — no screen dimming; world keeps rendering underneath
+  // Panel height is 70% of the original 150px; cards scale uniformly (3:4)
   const panelY = 48;
-  const panelH = 150;
+  const panelH = Math.round(150 * 0.7); // 105
+  const scale = 0.7;
   ctx.fillStyle = "rgba(20,10,30,0.92)";
-  roundRect(40, panelY, W - 80, panelH, 14);
+  roundRect(40, panelY, W - 80, panelH, 12);
   ctx.fill();
   ctx.strokeStyle = "#ff5a9a";
-  ctx.lineWidth = 3;
-  roundRect(40, panelY, W - 80, panelH, 14);
+  ctx.lineWidth = 2.5;
+  roundRect(40, panelY, W - 80, panelH, 12);
   ctx.stroke();
 
   ctx.fillStyle = "#ffb0d0";
-  ctx.font = "bold 16px sans-serif";
+  ctx.font = "bold 13px sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(slot.done ? "★ YOU GOT ★" : "✦ ROLLING… ✦", W/2, panelY + 24);
+  ctx.fillText(slot.done ? "★ YOU GOT ★" : "✦ ROLLING… ✦", W/2, panelY + 18);
 
   if (slotQueue > 0) {
     ctx.fillStyle = "#ffe66d";
-    ctx.font = "bold 12px sans-serif";
+    ctx.font = "bold 11px sans-serif";
     ctx.textAlign = "right";
-    ctx.fillText("Queue +" + slotQueue, W - 56, panelY + 24);
+    ctx.fillText("Queue +" + slotQueue, W - 56, panelY + 18);
   }
 
-  // card window
-  const cw = 72, ch = cardHeight(72); // canonical 72×96
-  const gap = 14;
+  // card window — width derived from height via CARD_ASPECT
+  const cw = 72 * scale;           // 50.4
+  const ch = cardHeight(cw);       // exact 3:4
+  const gap = 14 * scale;
   const centerX = W/2;
-  const cy = panelY + 40;
+  const cy = panelY + 26;
   const viewW = cw * 5 + gap * 4;
   const vx = centerX - viewW/2;
 
   ctx.save();
   ctx.beginPath();
-  ctx.rect(vx - 4, cy - 4, viewW + 8, ch + 8);
+  ctx.rect(vx - 3, cy - 3, viewW + 6, ch + 6);
   ctx.clip();
 
   const base = slot.offset;
-  // draw visible cards around current offset
   for (let i = -3; i <= 3; i++) {
     const idx = Math.floor(base) + i;
     if (idx < 0 || idx >= slot.strip.length) continue;
     const frac = base - Math.floor(base);
     const cx = centerX + (i - frac) * (cw + gap) - cw/2;
     const char = slot.strip[idx];
-    const isCenter = i === 0 && Math.abs(frac) < 0.5;
     drawCard(char, cx, cy, cw, ch, { glow: slot.done && idx === slot.targetIndex ? 1 : 0 });
   }
   ctx.restore();
 
   // center highlight frame
   ctx.strokeStyle = "#ffe66d";
-  ctx.lineWidth = 3;
-  roundRect(centerX - cw/2 - 4, cy - 4, cw + 8, ch + 8, 10);
+  ctx.lineWidth = 2.5;
+  roundRect(centerX - cw/2 - 3, cy - 3, cw + 6, ch + 6, 8);
   ctx.stroke();
 
   if (slot.done) {
     const rar = rarityOf(slot.result.id);
     ctx.fillStyle = rar.color;
-    ctx.font = "bold 14px sans-serif";
-    ctx.fillText(slot.result.name + " — " + rar.label, W/2, panelY + panelH - 12);
+    ctx.font = "bold 12px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(slot.result.name + " — " + rar.label, W/2, panelY + panelH - 8);
   }
 }
 
@@ -2197,7 +2205,7 @@ window.__HBC = {
   getSlotQueue: () => slotQueue,
   getCardAspect: () => CARD_ASPECT,
   getCardLayouts: () => {
-    const slot = { w: 72, h: cardHeight(72) };
+    const slot = { w: 72 * 0.7, h: cardHeight(72 * 0.7) };
     const collection = { w: 100, h: cardHeight(100) };
     const title = { w: 90, h: cardHeight(90) };
     const world = { w: 15, h: cardHeight(15) };
