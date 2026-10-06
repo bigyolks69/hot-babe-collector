@@ -327,13 +327,15 @@ function drawCard(char, x, y, w, h, opts) {
   }
 
   if (opts.count != null && opts.count > 0) {
+    const bw = Math.max(16, Math.min(22, w * 0.35));
+    const bh = Math.max(12, Math.min(16, h * 0.14));
     ctx.fillStyle = "rgba(0,0,0,0.55)";
-    roundRect(x + w - 28, y + 6, 22, 16, 4);
+    roundRect(x + w - bw - 4, y + 4, bw, bh, 3);
     ctx.fill();
     ctx.fillStyle = "#fff";
-    ctx.font = "bold 11px sans-serif";
+    ctx.font = "bold " + Math.max(8, Math.floor(bh * 0.75)) + "px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("x" + opts.count, x + w - 17, y + 18);
+    ctx.fillText("x" + opts.count, x + w - bw / 2 - 4, y + 4 + bh * 0.78);
   }
 }
 
@@ -531,16 +533,20 @@ function onHeartsZero() {
   // Active roll + queue keep running on top of the death overlay; rewards still grant.
   const owned = Object.keys(collection).filter(k => collection[k] > 0);
   let lostName = null;
+  let lostId = null;
+  let lostPrevCount = 0;
   if (owned.length) {
     const id = owned[Math.floor(Math.random() * owned.length)];
+    lostPrevCount = collection[id];
     collection[id]--;
     if (collection[id] <= 0) delete collection[id];
     saveCollection(collection);
     const ch = CHAR_DEFS.find(c => c.id === id);
     lostName = ch ? ch.name : id;
+    lostId = id;
     sfx.lose();
   }
-  loseAnim = { t: 0, name: lostName, dur: 2.2 };
+  loseAnim = { t: 0, name: lostName, lostId, lostPrevCount, dur: 2.2 };
   state = "dead";
 }
 
@@ -1157,55 +1163,168 @@ function drawTitle() {
   ctx.fillText("←→ / A D move  •  Space / W / ↑ jump  •  C collection", W/2, 420);
 }
 
+// Compact collection strip for death / win overlays
+function drawMiniCollection(opts) {
+  opts = opts || {};
+  const panelX = opts.x != null ? opts.x : 80;
+  const panelY = opts.y != null ? opts.y : H - 168;
+  const panelW = opts.w != null ? opts.w : W - 160;
+  const panelH = opts.h != null ? opts.h : 128;
+  const lostId = opts.lostId || null;
+  const lostPrevCount = opts.lostPrevCount || 0;
+  const animT = opts.animT != null ? opts.animT : 0;
+  const animDur = opts.animDur != null ? opts.animDur : 2.2;
+
+  ctx.fillStyle = "rgba(12,8,22,0.88)";
+  roundRect(panelX, panelY, panelW, panelH, 12);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,90,154,0.55)";
+  ctx.lineWidth = 2;
+  roundRect(panelX, panelY, panelW, panelH, 12);
+  ctx.stroke();
+
+  const unique = Object.keys(collection).filter(k => collection[k] > 0).length;
+  ctx.fillStyle = "#ffb0d0";
+  ctx.font = "bold 13px sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText("Collection", panelX + 14, panelY + 20);
+  ctx.fillStyle = "#fff";
+  ctx.font = "12px sans-serif";
+  ctx.textAlign = "right";
+  ctx.fillText(unique + " / " + CHAR_DEFS.length + " owned", panelX + panelW - 14, panelY + 20);
+
+  const cols = 6, rows = 2;
+  const gapX = 8, gapY = 6;
+  const padX = 14, padTop = 30, padBot = 10;
+  const gridW = panelW - padX * 2;
+  const gridH = panelH - padTop - padBot;
+  const cw = (gridW - gapX * (cols - 1)) / cols;
+  const ch = (gridH - gapY * (rows - 1)) / rows;
+
+  for (let i = 0; i < CHAR_DEFS.length; i++) {
+    const col = i % cols, row = Math.floor(i / cols);
+    const x = panelX + padX + col * (cw + gapX);
+    const y = panelY + padTop + row * (ch + gapY);
+    const char = CHAR_DEFS[i];
+    const count = collection[char.id] || 0;
+    const isLost = lostId && char.id === lostId;
+
+    ctx.save();
+    if (isLost) {
+      // Highlight + fade the lost slot over the death anim
+      const u = Math.min(1, animT / animDur);
+      const pulse = 0.55 + 0.45 * Math.sin(animT * 10);
+      ctx.globalAlpha = Math.max(0.15, 1 - u * 0.85);
+      // Show as still "owned" visually during fade if it went to zero
+      const showCount = count > 0 ? count : Math.max(0, lostPrevCount - 1);
+      const locked = count <= 0 && lostPrevCount <= 1;
+      if (count <= 0 && lostPrevCount >= 1) {
+        // draw as the card that is vanishing (was owned)
+        drawCard(char, x, y, cw, ch, {
+          locked: false,
+          count: lostPrevCount > 1 ? lostPrevCount - 1 : null,
+          showRarity: false,
+          glow: pulse,
+        });
+        // red LOST stamp
+        ctx.globalAlpha = Math.min(1, 0.4 + u);
+        ctx.fillStyle = "rgba(180,20,40,0.55)";
+        roundRect(x, y, cw, ch, 6);
+        ctx.fill();
+        ctx.fillStyle = "#ffe66d";
+        ctx.font = "bold " + Math.max(9, Math.floor(cw * 0.22)) + "px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("LOST", x + cw / 2, y + ch / 2 + 4);
+      } else {
+        drawCard(char, x, y, cw, ch, {
+          locked: false,
+          count: count > 0 ? count : null,
+          showRarity: false,
+          glow: pulse,
+        });
+        ctx.strokeStyle = "#ffe66d";
+        ctx.lineWidth = 2;
+        roundRect(x - 1, y - 1, cw + 2, ch + 2, 7);
+        ctx.stroke();
+        ctx.fillStyle = "#ffe66d";
+        ctx.font = "bold 9px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("-1", x + cw / 2, y + 11);
+      }
+    } else {
+      drawCard(char, x, y, cw, ch, {
+        locked: count === 0,
+        count: count > 0 ? count : null,
+        showRarity: false,
+      });
+    }
+    ctx.restore();
+  }
+}
+
 function drawDead() {
   ctx.fillStyle = "rgba(40,5,15,0.7)";
   ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = "#ff6b8a";
-  ctx.font = "bold 36px sans-serif";
+  ctx.font = "bold 32px sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("Ouch!", W/2, H/2 - 40);
+  ctx.fillText("Ouch!", W/2, 70);
   if (loseAnim && loseAnim.name) {
     ctx.fillStyle = "#ffe66d";
-    ctx.font = "bold 24px sans-serif";
-    ctx.fillText("LOST: " + loseAnim.name, W/2, H/2 + 10);
+    ctx.font = "bold 22px sans-serif";
+    ctx.fillText("LOST: " + loseAnim.name, W/2, 108);
     ctx.fillStyle = "#ccc";
-    ctx.font = "14px sans-serif";
-    ctx.fillText("A random card was taken from your collection", W/2, H/2 + 40);
+    ctx.font = "13px sans-serif";
+    ctx.fillText("A random card was taken from your collection", W/2, 132);
   } else {
     ctx.fillStyle = "#ccc";
-    ctx.font = "16px sans-serif";
-    ctx.fillText("No cards to lose… this time.", W/2, H/2 + 10);
+    ctx.font = "15px sans-serif";
+    ctx.fillText("No cards to lose… this time.", W/2, 108);
   }
   ctx.fillStyle = "#aaa";
-  ctx.font = "13px sans-serif";
-  ctx.fillText("Respawning at checkpoint…", W/2, H/2 + 80);
+  ctx.font = "12px sans-serif";
+  ctx.fillText("Respawning at checkpoint…", W/2, 154);
+
+  drawMiniCollection({
+    x: 100, y: 175, w: W - 200, h: 210,
+    lostId: loseAnim && loseAnim.lostId,
+    lostPrevCount: loseAnim && loseAnim.lostPrevCount,
+    animT: loseAnim ? loseAnim.t : 0,
+    animDur: loseAnim ? loseAnim.dur : 2.2,
+  });
 }
 
 function drawWin() {
   ctx.fillStyle = "rgba(10,5,30,0.85)";
   ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = "#ffe66d";
-  ctx.font = "bold 42px sans-serif";
+  ctx.font = "bold 36px sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("Level Complete!", W/2, 160);
+  ctx.fillText("Level Complete!", W/2, 48);
   ctx.fillStyle = "#ff8ec8";
-  ctx.font = "18px sans-serif";
-  ctx.fillText("Big Salty Gaming Studio thanks you", W/2, 200);
+  ctx.font = "15px sans-serif";
+  ctx.fillText("Big Salty Gaming Studio thanks you", W/2, 74);
 
   if (winStats) {
     ctx.fillStyle = "#fff";
-    ctx.font = "16px sans-serif";
-    ctx.fillText("Coins collected: " + winStats.coins + " / " + winStats.coinsMax, W/2, 260);
-    ctx.fillText("Unique cards owned: " + winStats.unique + " / " + CHAR_DEFS.length, W/2, 290);
-    ctx.fillText("Total pulls: " + winStats.total, W/2, 320);
+    ctx.font = "14px sans-serif";
+    ctx.fillText(
+      "Coins " + winStats.coins + "/" + winStats.coinsMax +
+      "   ·   Unique " + winStats.unique + "/" + CHAR_DEFS.length +
+      "   ·   Pulls " + winStats.total,
+      W/2, 102
+    );
   }
 
+  drawMiniCollection({ x: 100, y: 120, w: W - 200, h: 280 });
+
   ctx.fillStyle = "#ffe66d";
-  ctx.font = "bold 18px sans-serif";
-  ctx.fillText("Press R or Enter to Restart", W/2, 400);
+  ctx.font = "bold 16px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("Press R or Enter to Restart", W/2, H - 48);
   ctx.fillStyle = "#aaa";
-  ctx.font = "14px sans-serif";
-  ctx.fillText("Press C to view collection", W/2, 430);
+  ctx.font = "13px sans-serif";
+  ctx.fillText("Press C to view full collection", W/2, H - 26);
 }
 
 function frame(dt) {
