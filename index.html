@@ -511,48 +511,48 @@ function maybeStartCryLoop() {
 
 // ---------- Babe pool (data-driven; grow by appending entries) ----------
 const RARITIES = [
-  { id: "common",    label: "Common",    color: "#9aa0a6", weight: 50, order: 0 },
-  { id: "rare",      label: "Rare",      color: "#4ea1ff", weight: 28, order: 1 },
-  { id: "epic",      label: "Epic",      color: "#c06bff", weight: 15, order: 2 },
-  { id: "legendary", label: "Legendary", color: "#ffb020", weight: 7,  order: 3 },
+  // Pull odds: roll tier first (weights), then uniform within tier
+  { id: "common", label: "Common",     color: "#9aa0a6", weight: 88, order: 0 },
+  { id: "rare",   label: "Rare",       color: "#7ec8ff", weight: 10, order: 1 },
+  { id: "ultra",  label: "Ultra Rare", color: "#ffd24a", weight: 2,  order: 2 },
 ];
 const RARITY_ORDER = Object.fromEntries(RARITIES.map(r => [r.id, r.order]));
 
-// Placeholder babe defs: { id, name, rarity, hue, shape } — art hooks later via optional `art`
-// Placeholder babe defs: { id, name, rarity, hue, shape } — front art TBD (cardbacks only for now)
+// Placeholder babe defs — ids stable; rarities: 22 Common / 6 Rare / 2 Ultra Rare
 const BABE_POOL = [
-  // Original 12
-  { id: "ruby",    name: "Ruby",    rarity: "common",    hue: 0,   shape: "hourglass" },
-  { id: "luna",    name: "Luna",    rarity: "common",    hue: 220, shape: "star" },
-  { id: "jade",    name: "Jade",    rarity: "common",    hue: 140, shape: "diamond" },
-  { id: "nova",    name: "Nova",    rarity: "common",    hue: 40,  shape: "circle" },
-  { id: "kira",    name: "Kira",    rarity: "rare",      hue: 300, shape: "heart" },
-  { id: "mira",    name: "Mira",    rarity: "rare",      hue: 180, shape: "hourglass" },
-  { id: "suki",    name: "Suki",    rarity: "rare",      hue: 25,  shape: "star" },
-  { id: "zara",    name: "Zara",    rarity: "epic",      hue: 330, shape: "diamond" },
-  { id: "ivy",     name: "Ivy",     rarity: "epic",      hue: 110, shape: "heart" },
-  { id: "vex",     name: "Vex",     rarity: "epic",      hue: 270, shape: "circle" },
-  { id: "aurora",  name: "Aurora",  rarity: "legendary", hue: 50,  shape: "star" },
-  { id: "sol",     name: "Sol",     rarity: "legendary", hue: 15,  shape: "hourglass" },
-  // +18 placeholders
-  { id: "cleo",    name: "Cleo",    rarity: "common",    hue: 340, shape: "circle" },
-  { id: "daisy",   name: "Daisy",   rarity: "common",    hue: 55,  shape: "star" },
-  { id: "ember",   name: "Ember",   rarity: "common",    hue: 18,  shape: "diamond" },
-  { id: "faye",    name: "Faye",    rarity: "common",    hue: 200, shape: "heart" },
-  { id: "gigi",    name: "Gigi",    rarity: "common",    hue: 160, shape: "hourglass" },
-  { id: "haze",    name: "Haze",    rarity: "common",    hue: 250, shape: "circle" },
-  { id: "iris",    name: "Iris",    rarity: "common",    hue: 275, shape: "star" },
-  { id: "juno",    name: "Juno",    rarity: "common",    hue: 95,  shape: "diamond" },
-  { id: "nyx",     name: "Nyx",     rarity: "rare",      hue: 265, shape: "hourglass" },
-  { id: "opal",    name: "Opal",    rarity: "rare",      hue: 190, shape: "circle" },
-  { id: "piper",   name: "Piper",   rarity: "rare",      hue: 35,  shape: "heart" },
-  { id: "quill",   name: "Quill",   rarity: "rare",      hue: 210, shape: "star" },
-  { id: "raven",   name: "Raven",   rarity: "rare",      hue: 285, shape: "diamond" },
-  { id: "sage",    name: "Sage",    rarity: "epic",      hue: 125, shape: "circle" },
-  { id: "tess",    name: "Tess",    rarity: "epic",      hue: 10,  shape: "hourglass" },
-  { id: "uma",     name: "Uma",     rarity: "epic",      hue: 310, shape: "star" },
-  { id: "wren",    name: "Wren",    rarity: "legendary", hue: 175, shape: "heart" },
-  { id: "yuki",    name: "Yuki",    rarity: "legendary", hue: 205, shape: "diamond" },
+  // —— Common (22) ——
+  { id: "ruby",    name: "Ruby",    rarity: "common", hue: 0,   shape: "hourglass" },
+  { id: "luna",    name: "Luna",    rarity: "common", hue: 220, shape: "star" },
+  { id: "jade",    name: "Jade",    rarity: "common", hue: 140, shape: "diamond" },
+  { id: "nova",    name: "Nova",    rarity: "common", hue: 40,  shape: "circle" },
+  { id: "vex",     name: "Vex",     rarity: "common", hue: 270, shape: "circle" },
+  { id: "sol",     name: "Sol",     rarity: "common", hue: 15,  shape: "hourglass" },
+  { id: "cleo",    name: "Cleo",    rarity: "common", hue: 340, shape: "circle" },
+  { id: "daisy",   name: "Daisy",   rarity: "common", hue: 55,  shape: "star" },
+  { id: "ember",   name: "Ember",   rarity: "common", hue: 18,  shape: "diamond" },
+  { id: "faye",    name: "Faye",    rarity: "common", hue: 200, shape: "heart" },
+  { id: "gigi",    name: "Gigi",    rarity: "common", hue: 160, shape: "hourglass" },
+  { id: "haze",    name: "Haze",    rarity: "common", hue: 250, shape: "circle" },
+  { id: "iris",    name: "Iris",    rarity: "common", hue: 275, shape: "star" },
+  { id: "juno",    name: "Juno",    rarity: "common", hue: 95,  shape: "diamond" },
+  { id: "opal",    name: "Opal",    rarity: "common", hue: 190, shape: "circle" },
+  { id: "piper",   name: "Piper",   rarity: "common", hue: 35,  shape: "heart" },
+  { id: "quill",   name: "Quill",   rarity: "common", hue: 210, shape: "star" },
+  { id: "raven",   name: "Raven",   rarity: "common", hue: 285, shape: "diamond" },
+  { id: "sage",    name: "Sage",    rarity: "common", hue: 125, shape: "circle" },
+  { id: "tess",    name: "Tess",    rarity: "common", hue: 10,  shape: "hourglass" },
+  { id: "uma",     name: "Uma",     rarity: "common", hue: 310, shape: "star" },
+  { id: "wren",    name: "Wren",    rarity: "common", hue: 175, shape: "heart" },
+  // —— Rare (6) ——
+  { id: "kira",    name: "Kira",    rarity: "rare",   hue: 300, shape: "heart" },
+  { id: "mira",    name: "Mira",    rarity: "rare",   hue: 180, shape: "hourglass" },
+  { id: "suki",    name: "Suki",    rarity: "rare",   hue: 25,  shape: "star" },
+  { id: "zara",    name: "Zara",    rarity: "rare",   hue: 330, shape: "diamond" },
+  { id: "ivy",     name: "Ivy",     rarity: "rare",   hue: 110, shape: "heart" },
+  { id: "nyx",     name: "Nyx",     rarity: "rare",   hue: 265, shape: "hourglass" },
+  // —— Ultra Rare (2) ——
+  { id: "aurora",  name: "Aurora",  rarity: "ultra",  hue: 50,  shape: "star" },
+  { id: "yuki",    name: "Yuki",    rarity: "ultra",  hue: 205, shape: "diamond" },
 ];
 // Map Iris-temp ids from 58dcf8d saves back onto the restored placeholders
 const BABE_ID_MIGRATE = {
@@ -572,11 +572,13 @@ function rarityOf(id) {
 function rarityRank(id) { return RARITY_ORDER[(babeById(id) || {}).rarity] || 0; }
 
 function rollCharacter() {
+  // Tier first (88% / 10% / 2%), then uniform within that tier
   const total = RARITIES.reduce((s, r) => s + r.weight, 0);
   let n = Math.random() * total;
   let rarity = RARITIES[0];
   for (const r of RARITIES) { n -= r.weight; if (n <= 0) { rarity = r; break; } }
   const pool = BABE_POOL.filter(c => c.rarity === rarity.id);
+  if (!pool.length) return BABE_POOL[0];
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
@@ -905,6 +907,57 @@ async function preloadCardArt() {
   return true;
 }
 
+
+/** Tier-distinct placeholder borders until Iris fronts arrive. Same cardback for all. */
+function drawRarityBorderFX(char, x, y, w, h) {
+  const r = char.rarity;
+  if (r !== "rare" && r !== "ultra") return;
+  const t = performance.now() / 1000;
+  ctx.save();
+  if (r === "rare") {
+    // Silver/blue glow + light sparkle
+    const pulse = 8 + Math.sin(t * 4) * 3;
+    ctx.shadowColor = "#7ec8ff";
+    ctx.shadowBlur = pulse;
+    ctx.strokeStyle = "#c8e7ff";
+    ctx.lineWidth = Math.max(2.5, w * 0.045);
+    roundRect(x + 1.5, y + 1.5, w - 3, h - 3, 7);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "rgba(200,230,255,0.9)";
+    for (let i = 0; i < 3; i++) {
+      const a = t * 2.2 + i * 2.1;
+      const px = x + w * (0.18 + 0.28 * ((Math.sin(a) + 1) / 2));
+      const py = y + h * (0.15 + 0.25 * ((Math.cos(a * 1.3) + 1) / 2));
+      const s = 1.2 + (Math.sin(a * 3) + 1) * 0.8;
+      ctx.fillRect(Math.floor(px), Math.floor(py), s, s);
+    }
+  } else {
+    // Animated gold/rainbow border + stronger sparkles
+    const hue = (t * 140) % 360;
+    ctx.shadowColor = `hsl(${hue}, 100%, 55%)`;
+    ctx.shadowBlur = 14 + Math.sin(t * 5) * 5;
+    ctx.strokeStyle = `hsl(${(hue + 35) % 360}, 100%, 60%)`;
+    ctx.lineWidth = Math.max(3.5, w * 0.055);
+    roundRect(x + 1, y + 1, w - 2, h - 2, 7);
+    ctx.stroke();
+    ctx.strokeStyle = "#ffe66d";
+    ctx.lineWidth = Math.max(1.5, w * 0.02);
+    ctx.shadowBlur = 6;
+    roundRect(x + 4, y + 4, w - 8, h - 8, 5);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    for (let i = 0; i < 8; i++) {
+      const a = t * 3.2 + i * (Math.PI * 2 / 8);
+      const px = x + w / 2 + Math.cos(a) * w * 0.40;
+      const py = y + h / 2 + Math.sin(a) * h * 0.40;
+      ctx.fillStyle = `hsla(${(hue + i * 45) % 360}, 100%, 75%, 0.95)`;
+      ctx.fillRect(Math.floor(px), Math.floor(py), 2.5, 2.5);
+    }
+  }
+  ctx.restore();
+}
+
 function drawCard(char, x, y, w, h, opts) {
   opts = opts || {};
   // Uniform scale only — height always derived from width via CARD_ASPECT
@@ -968,10 +1021,12 @@ function drawCard(char, x, y, w, h, opts) {
   roundRect(x, y, w, h, 8);
   ctx.fillStyle = g;
   ctx.fill();
+  // Base border (common); rare/ultra overlays animated FX below
   ctx.strokeStyle = rar.color;
   ctx.lineWidth = 3;
   roundRect(x + 1.5, y + 1.5, w - 3, h - 3, 7);
   ctx.stroke();
+  drawRarityBorderFX(char, x, y, w, h);
   ctx.strokeStyle = "rgba(255,255,255,0.25)";
   ctx.lineWidth = 1;
   if (iconOnly) roundRect(x + 3, y + 3, w - 6, h - 6, 4);
@@ -1161,11 +1216,20 @@ let deathCry = null; // { t, dur, lostName, lostId, lostPrevCount } — in-world
 let winStats = null;
 let runGained = [];   // babe ids gained this run (for win screen)
 let gallery = {
-  filter: "all", // all | owned | missing | common | rare | epic | legendary
+  filter: "all", // all | owned | missing | common | rare | ultra
   scroll: 0,
   selected: null, // babe id
 };
-const GALLERY_FILTERS = ["all", "owned", "missing", "common", "rare", "epic", "legendary"];
+const GALLERY_FILTERS = ["all", "owned", "missing", "common", "rare", "ultra"];
+function galleryFilterLabel(lab) {
+  if (lab === "ultra") return "Ultra Rare";
+  if (lab === "all") return "All";
+  if (lab === "owned") return "Owned";
+  if (lab === "missing") return "Missing";
+  if (lab === "common") return "Common";
+  if (lab === "rare") return "Rare";
+  return galleryFilterLabel(lab);
+}
 // Bottom-right HUD: 5-slot window into sorted full pool
 const HUD_SLOTS = 5;
 const HUD_CW = 28;
@@ -1504,11 +1568,24 @@ function finishSlot() {
   saveCollection(collection);
   runGained.push(id);
   focusHudOnBabe(id);
+  const rar = rarityOf(id);
+  const nm = slot.result.name;
   if (prev === 0) {
-    addCallout("NEW! " + slot.result.name, "#ffe66d");
+    if (rar.id === "ultra") {
+      addCallout("✦ ULTRA RARE! NEW! " + nm, "#ffd24a");
+      spawnParticles(W / 2, 120, "#ffd24a", 24);
+      spawnParticles(W / 2, 120, "#ff7ab8", 12);
+    } else if (rar.id === "rare") {
+      addCallout("★ RARE! NEW! " + nm, "#7ec8ff");
+      spawnParticles(W / 2, 120, "#7ec8ff", 14);
+    } else {
+      addCallout("NEW! " + nm + " · Common", "#ffe66d");
+    }
     sfx.new();
   } else {
-    addCallout("DUPE x" + (prev + 1) + " — " + slot.result.name, "#9ad0ff");
+    if (rar.id === "ultra") addCallout("✦ ULTRA RARE DUPE x" + (prev + 1) + " — " + nm, "#ffd24a");
+    else if (rar.id === "rare") addCallout("★ RARE DUPE x" + (prev + 1) + " — " + nm, "#9ad0ff");
+    else addCallout("DUPE x" + (prev + 1) + " — " + nm + " · Common", "#9ad0ff");
   }
   slot = null;
   // Chain queued rolls immediately (even over death/win overlays — player earned them)
@@ -2140,7 +2217,7 @@ function galleryFilteredList() {
   const f = gallery.filter;
   if (f === "owned") list = list.filter(b => (collection[b.id] || 0) > 0);
   else if (f === "missing") list = list.filter(b => !(collection[b.id] > 0));
-  else if (f === "common" || f === "rare" || f === "epic" || f === "legendary") {
+  else if (f === "common" || f === "rare" || f === "ultra") {
     list = list.filter(b => b.rarity === f);
   }
   list.sort((a, b) => {
@@ -2157,7 +2234,7 @@ function handleGalleryClick(sx, sy) {
   const labels = GALLERY_FILTERS;
   let tx = 40;
   for (const lab of labels) {
-    const label = lab[0].toUpperCase() + lab.slice(1);
+    const label = galleryFilterLabel(lab);
     ctx.font = "bold 11px sans-serif";
     const tw = Math.max(54, ctx.measureText(label).width + 16);
     if (sx >= tx && sx <= tx + tw && sy >= tabY && sy <= tabY + tabH) {
@@ -2238,14 +2315,14 @@ function drawCollection() {
   ctx.fillText("Babes " + unique + "/" + BABE_POOL.length, W / 2, 54);
   ctx.font = "11px sans-serif";
   ctx.fillStyle = "#888";
-  ctx.fillText("C / Esc close  ·  Wheel / arrows scroll  ·  1–7 filters  ·  Click to inspect", W / 2, H - 10);
+  ctx.fillText("C / Esc close  ·  Wheel / arrows scroll  ·  1–6 filters  ·  Click to inspect", W / 2, H - 10);
 
   // Filter tabs
   const tabY = 62, tabH = 26, tabGap = 6;
   let tx = 36;
   ctx.textAlign = "center";
   for (const lab of GALLERY_FILTERS) {
-    const label = lab[0].toUpperCase() + lab.slice(1);
+    const label = galleryFilterLabel(lab);
     ctx.font = "bold 11px sans-serif";
     const tw = Math.max(54, ctx.measureText(label).width + 16);
     const active = gallery.filter === lab;
