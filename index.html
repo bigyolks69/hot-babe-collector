@@ -519,8 +519,14 @@ const RARITIES = [
 const RARITY_ORDER = Object.fromEntries(RARITIES.map(r => [r.id, r.order]));
 
 // Placeholder babe defs: { id, name, rarity, hue, shape } — art hooks later via optional `art`
+// Iris art paths: sm 15×20, md 110×147, lg 440×588 (all 3:4)
+function babeArtPaths(name) {
+  const b = "art/cards/v3/card_" + name + "_";
+  return { sm: b + "15x20.png", md: b + "110x147.png", lg: b + "440x588.png" };
+}
+
 const BABE_POOL = [
-  // Original 12
+  // Original placeholders (no Iris art yet)
   { id: "ruby",    name: "Ruby",    rarity: "common",    hue: 0,   shape: "hourglass" },
   { id: "luna",    name: "Luna",    rarity: "common",    hue: 220, shape: "star" },
   { id: "jade",    name: "Jade",    rarity: "common",    hue: 140, shape: "diamond" },
@@ -533,26 +539,33 @@ const BABE_POOL = [
   { id: "vex",     name: "Vex",     rarity: "epic",      hue: 270, shape: "circle" },
   { id: "aurora",  name: "Aurora",  rarity: "legendary", hue: 50,  shape: "star" },
   { id: "sol",     name: "Sol",     rarity: "legendary", hue: 15,  shape: "hourglass" },
-  // +18 placeholders
-  { id: "cleo",    name: "Cleo",    rarity: "common",    hue: 340, shape: "circle" },
-  { id: "daisy",   name: "Daisy",   rarity: "common",    hue: 55,  shape: "star" },
+  // Artist Iris illustrated set — replaced cleo/daisy/nyx/sage; yuki kept Legendary
+  { id: "mika",    name: "Mika",    rarity: "common",    hue: 340, shape: "circle",    art: babeArtPaths("mika") },
+  { id: "sora",    name: "Sora",    rarity: "common",    hue: 55,  shape: "star",      art: babeArtPaths("sora") },
   { id: "ember",   name: "Ember",   rarity: "common",    hue: 18,  shape: "diamond" },
   { id: "faye",    name: "Faye",    rarity: "common",    hue: 200, shape: "heart" },
   { id: "gigi",    name: "Gigi",    rarity: "common",    hue: 160, shape: "hourglass" },
   { id: "haze",    name: "Haze",    rarity: "common",    hue: 250, shape: "circle" },
   { id: "iris",    name: "Iris",    rarity: "common",    hue: 275, shape: "star" },
   { id: "juno",    name: "Juno",    rarity: "common",    hue: 95,  shape: "diamond" },
-  { id: "nyx",     name: "Nyx",     rarity: "rare",      hue: 265, shape: "hourglass" },
+  { id: "rin",     name: "Rin",     rarity: "rare",      hue: 265, shape: "hourglass", art: babeArtPaths("rin") },
   { id: "opal",    name: "Opal",    rarity: "rare",      hue: 190, shape: "circle" },
   { id: "piper",   name: "Piper",   rarity: "rare",      hue: 35,  shape: "heart" },
   { id: "quill",   name: "Quill",   rarity: "rare",      hue: 210, shape: "star" },
   { id: "raven",   name: "Raven",   rarity: "rare",      hue: 285, shape: "diamond" },
-  { id: "sage",    name: "Sage",    rarity: "epic",      hue: 125, shape: "circle" },
+  { id: "kaede",   name: "Kaede",   rarity: "epic",      hue: 125, shape: "circle",    art: babeArtPaths("kaede") },
   { id: "tess",    name: "Tess",    rarity: "epic",      hue: 10,  shape: "hourglass" },
   { id: "uma",     name: "Uma",     rarity: "epic",      hue: 310, shape: "star" },
   { id: "wren",    name: "Wren",    rarity: "legendary", hue: 175, shape: "heart" },
-  { id: "yuki",    name: "Yuki",    rarity: "legendary", hue: 205, shape: "diamond" },
+  { id: "yuki",    name: "Yuki",    rarity: "legendary", hue: 205, shape: "diamond",  art: babeArtPaths("yuki") },
 ];
+// Save migration: old placeholder ids → Iris babes that took their slots
+const BABE_ID_MIGRATE = {
+  cleo: "mika",
+  daisy: "sora",
+  nyx: "rin",
+  sage: "kaede",
+};
 // Alias for older call sites
 const CHAR_DEFS = BABE_POOL;
 
@@ -582,22 +595,40 @@ function totalPulls(col) {
 // ---------- localStorage collection (v1 counts map; v2 wraps same map) ----------
 const SAVE_KEY = "hbc_collection_v1";
 const SAVE_KEY_V2 = "hbc_collection_v2";
+function migrateCollectionCounts(col) {
+  if (!col || typeof col !== "object") return {};
+  const out = {};
+  for (const [k, v] of Object.entries(col)) {
+    const n = +v || 0;
+    if (n <= 0) continue;
+    const id = BABE_ID_MIGRATE[k] || k;
+    if (!babeById(id)) continue; // drop unknown / removed placeholders
+    out[id] = (out[id] || 0) + n;
+  }
+  return out;
+}
 function loadCollection() {
   try {
+    let counts = null;
     const v2 = localStorage.getItem(SAVE_KEY_V2);
     if (v2) {
       const obj = JSON.parse(v2);
-      if (obj && typeof obj === "object" && obj.counts && typeof obj.counts === "object") return obj.counts;
+      if (obj && typeof obj === "object" && obj.counts && typeof obj.counts === "object") counts = obj.counts;
     }
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return {};
-    const obj = JSON.parse(raw);
-    // migrate v1 → v2 quietly
-    if (obj && typeof obj === "object") {
-      try { localStorage.setItem(SAVE_KEY_V2, JSON.stringify({ v: 2, counts: obj })); } catch {}
-      return obj;
+    if (!counts) {
+      const raw = localStorage.getItem(SAVE_KEY);
+      if (!raw) return {};
+      const obj = JSON.parse(raw);
+      if (obj && typeof obj === "object") counts = obj;
     }
-    return {};
+    if (!counts) return {};
+    const migrated = migrateCollectionCounts(counts);
+    // Persist cleaned map so removed ids don't linger
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(migrated));
+      localStorage.setItem(SAVE_KEY_V2, JSON.stringify({ v: 2, counts: migrated }));
+    } catch {}
+    return migrated;
   } catch { return {}; }
 }
 function saveCollection(col) {
@@ -838,6 +869,55 @@ const CARD_ASPECT = 72 / 96; // 3/4
 function cardHeight(w) { return w / CARD_ASPECT; }
 function cardWidth(h) { return h * CARD_ASPECT; }
 
+// Iris cardbacks + fronts (preload; graceful null → procedural)
+const cardImgs = {
+  ready: false,
+  mystery: { sm: null, md: null, lg: null },
+  normal: { sm: null, md: null, lg: null },
+  babes: {}, // id → { sm, md, lg }
+};
+
+function pickCardSizeKey(drawW) {
+  if (drawW <= 40) return "sm";
+  if (drawW <= 200) return "md";
+  return "lg";
+}
+
+function drawCardBitmap(img, x, y, w, h, smooth) {
+  if (!img || !img.complete || img.naturalWidth < 1) return false;
+  const ix = Math.floor(x), iy = Math.floor(y);
+  const iw = Math.max(1, Math.floor(w)), ih = Math.max(1, Math.floor(h));
+  ctx.save();
+  ctx.imageSmoothingEnabled = !!smooth;
+  if (smooth) ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, ix, iy, iw, ih);
+  ctx.restore();
+  return true;
+}
+
+async function preloadCardArt() {
+  const sizes = [
+    ["sm", "15x20"],
+    ["md", "110x147"],
+    ["lg", "440x588"],
+  ];
+  const jobs = [];
+  for (const [key, file] of sizes) {
+    jobs.push(loadImg("art/cards/cardback/A5/cardback_" + file + ".png").then(im => { cardImgs.mystery[key] = im; }));
+    jobs.push(loadImg("art/cards/cardback/normal/cardback_" + file + ".png").then(im => { cardImgs.normal[key] = im; }));
+  }
+  for (const b of BABE_POOL) {
+    if (!b.art) continue;
+    cardImgs.babes[b.id] = { sm: null, md: null, lg: null };
+    for (const key of ["sm", "md", "lg"]) {
+      jobs.push(loadImg(b.art[key]).then(im => { cardImgs.babes[b.id][key] = im; }));
+    }
+  }
+  await Promise.all(jobs);
+  cardImgs.ready = true;
+  return true;
+}
+
 function drawCard(char, x, y, w, h, opts) {
   opts = opts || {};
   // Uniform scale only — height always derived from width via CARD_ASPECT
@@ -846,8 +926,11 @@ function drawCard(char, x, y, w, h, opts) {
   const rar = rarityOf(char.id);
   const locked = !!opts.locked;
   const glow = opts.glow || 0;
+  const iconOnly = !!opts.iconOnly;
+  const sizeKey = pickCardSizeKey(w);
+  // Smooth only when downscaling large (440) art into big UI views
+  const useSmooth = sizeKey === "lg";
 
-  // glow
   if (glow > 0) {
     ctx.save();
     ctx.shadowColor = rar.color;
@@ -858,62 +941,92 @@ function drawCard(char, x, y, w, h, opts) {
     ctx.restore();
   }
 
-  // card body gradient
-  const g = ctx.createLinearGradient(x, y, x, y+h);
+  // Locked / missing: regular cardback (Iris) instead of grey ??? silhouette
   if (locked) {
-    g.addColorStop(0, "#2a2a32");
-    g.addColorStop(1, "#1a1a22");
+    const back = cardImgs.normal[sizeKey];
+    if (drawCardBitmap(back, x, y, w, h, useSmooth)) {
+      // light frame
+      ctx.strokeStyle = "#555";
+      ctx.lineWidth = 2;
+      roundRect(x + 1, y + 1, w - 2, h - 2, 6);
+      ctx.stroke();
+    } else {
+      // procedural fallback
+      const g = ctx.createLinearGradient(x, y, x, y + h);
+      g.addColorStop(0, "#2a2a32");
+      g.addColorStop(1, "#1a1a22");
+      roundRect(x, y, w, h, 8);
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.strokeStyle = "#555";
+      ctx.lineWidth = 3;
+      roundRect(x + 1.5, y + 1.5, w - 3, h - 3, 7);
+      ctx.stroke();
+      drawSilhouette(x + w / 2, y + h * (iconOnly ? 0.52 : 0.42), Math.min(w, h) * 0.55, char.shape, "#3a3a44");
+    }
+    if (!iconOnly) {
+      ctx.textAlign = "center";
+      ctx.font = `bold ${Math.max(10, Math.floor(w * 0.12))}px sans-serif`;
+      ctx.fillStyle = "#666";
+      ctx.fillText("???", x + w / 2, y + h - 12);
+    }
+    return;
+  }
+
+  // Owned: Iris front if available, else procedural gradient + silhouette
+  const artSet = char.art && cardImgs.babes[char.id];
+  const front = artSet && artSet[sizeKey];
+  if (drawCardBitmap(front, x, y, w, h, useSmooth)) {
+    // rarity rim
+    ctx.strokeStyle = rar.color;
+    ctx.lineWidth = Math.max(2, Math.floor(w * 0.04));
+    roundRect(x + 1, y + 1, w - 2, h - 2, 6);
+    ctx.stroke();
   } else {
+    const g = ctx.createLinearGradient(x, y, x, y + h);
     g.addColorStop(0, `hsl(${char.hue}, 70%, 55%)`);
     g.addColorStop(0.55, `hsl(${char.hue + 20}, 65%, 35%)`);
     g.addColorStop(1, `hsl(${char.hue}, 50%, 18%)`);
+    roundRect(x, y, w, h, 8);
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.strokeStyle = rar.color;
+    ctx.lineWidth = 3;
+    roundRect(x + 1.5, y + 1.5, w - 3, h - 3, 7);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(255,255,255,0.25)";
+    ctx.lineWidth = 1;
+    if (iconOnly) roundRect(x + 3, y + 3, w - 6, h - 6, 4);
+    else roundRect(x + 8, y + 8, w - 16, h - 28, 4);
+    ctx.stroke();
+    drawSilhouette(
+      x + w / 2,
+      y + h * (iconOnly ? 0.52 : 0.42),
+      Math.min(w, h) * (iconOnly ? 0.62 : 0.55),
+      char.shape,
+      "rgba(255,255,255,0.92)"
+    );
   }
-  roundRect(x, y, w, h, 8);
-  ctx.fillStyle = g;
-  ctx.fill();
-
-  // rarity border
-  ctx.strokeStyle = locked ? "#555" : rar.color;
-  ctx.lineWidth = 3;
-  roundRect(x+1.5, y+1.5, w-3, h-3, 7);
-  ctx.stroke();
-
-  // inner frame (tighter on icon-only thumbs — no text band)
-  ctx.strokeStyle = locked ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.25)";
-  ctx.lineWidth = 1;
-  if (opts.iconOnly) {
-    roundRect(x + 3, y + 3, w - 6, h - 6, 4);
-  } else {
-    roundRect(x+8, y+8, w-16, h-28, 4);
-  }
-  ctx.stroke();
-
-  const iconOnly = !!opts.iconOnly;
-
-  // silhouette — centered more in icon-only thumbs
-  drawSilhouette(
-    x + w/2,
-    y + h * (iconOnly ? 0.52 : 0.42),
-    Math.min(w, h) * (iconOnly ? 0.62 : 0.55),
-    char.shape,
-    locked ? "#3a3a44" : "rgba(255,255,255,0.92)"
-  );
 
   if (!iconOnly) {
-    // name + rarity
     ctx.textAlign = "center";
-    ctx.font = `bold ${Math.max(10, Math.floor(w*0.12))}px sans-serif`;
-    ctx.fillStyle = locked ? "#666" : "#fff";
-    ctx.fillText(locked ? "???" : char.name, x + w/2, y + h - 12);
-
-    if (!locked && opts.showRarity !== false) {
-      ctx.font = `${Math.max(8, Math.floor(w*0.08))}px sans-serif`;
+    // Name plate over art bottom for readability when using bitmap
+    if (front) {
+      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      roundRect(x + 4, y + h - 28, w - 8, 24, 4);
+      ctx.fill();
+    }
+    ctx.font = `bold ${Math.max(10, Math.floor(w * 0.12))}px sans-serif`;
+    ctx.fillStyle = "#fff";
+    ctx.fillText(char.name, x + w / 2, y + h - 12);
+    if (opts.showRarity !== false) {
+      ctx.font = `${Math.max(8, Math.floor(w * 0.08))}px sans-serif`;
       ctx.fillStyle = rar.color;
-      ctx.fillText(rar.label, x + w/2, y + 14);
+      ctx.fillText(rar.label, x + w / 2, y + 14);
     }
   }
 
-  // Dupe badge: full label on normal cards; tiny digit only on icon-only if count>1 and room
+  // Dupe badge
   if (opts.count != null && opts.count > 1) {
     if (iconOnly) {
       if (w >= 22) {
@@ -929,7 +1042,7 @@ function drawCard(char, x, y, w, h, opts) {
         ctx.fillText(String(opts.count), x + w - r - 2, y + r + 2.5);
         ctx.textBaseline = "alphabetic";
       }
-    } else if (opts.count > 0) {
+    } else {
       const bw = Math.max(16, Math.min(22, w * 0.35));
       const bh = Math.max(12, Math.min(16, h * 0.14));
       ctx.fillStyle = "rgba(0,0,0,0.55)";
@@ -1733,25 +1846,32 @@ function drawWorld() {
     ctx.fill();
   }
 
-  // coins (card-shaped)
+  // coins — mystery cardback (Iris A5), bob + sparkle
   for (const c of coins) {
     if (c.collected) continue;
     const by = c.y + Math.sin(c.bob) * 4;
-    // mini card
-    const g = ctx.createLinearGradient(c.x, by, c.x, by + c.h);
-    g.addColorStop(0, "#ffd24a");
-    g.addColorStop(1, "#ff7ab8");
-    roundRect(c.x, by, c.w, c.h, 3);
-    ctx.fillStyle = g;
-    ctx.fill();
-    ctx.strokeStyle = "#fff8";
-    ctx.lineWidth = 1;
-    roundRect(c.x, by, c.w, c.h, 3);
-    ctx.stroke();
+    const cx = Math.floor(c.x), cy = Math.floor(by);
+    const cw = Math.floor(c.w), ch = Math.floor(c.h);
+    const back = cardImgs.mystery.sm || cardImgs.mystery.md;
+    if (!drawCardBitmap(back, cx, cy, cw, ch, false)) {
+      const g = ctx.createLinearGradient(cx, cy, cx, cy + ch);
+      g.addColorStop(0, "#6b3a8a");
+      g.addColorStop(1, "#2a1040");
+      roundRect(cx, cy, cw, ch, 3);
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.fillStyle = "#ffd24a";
+      ctx.font = "bold 9px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("?", cx + cw / 2, cy + ch / 2 + 3);
+    }
+    // sparkle
+    const sp = (Math.sin(c.bob * 2) + 1) * 0.5;
+    ctx.globalAlpha = 0.35 + sp * 0.55;
     ctx.fillStyle = "#fff";
-    ctx.font = "bold 10px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("★", c.x + c.w/2, by + c.h/2 + 3);
+    ctx.fillRect(cx + cw - 4, cy + 2, 2, 2);
+    ctx.fillRect(cx + 2, cy + ch * 0.4, 2, 2);
+    ctx.globalAlpha = 1;
   }
 
   // enemies
@@ -2226,8 +2346,8 @@ function drawCollection() {
       const rar = rarityOf(babe.id);
       ctx.fillStyle = "rgba(0,0,0,0.65)";
       ctx.fillRect(0, 0, W, H);
-      const dw = 180, dh = cardHeight(dw);
-      const dx = (W - dw) / 2, dy = 110;
+      const dw = 220, dh = cardHeight(dw); // uses lg 440 art (smoothed downscale)
+      const dx = (W - dw) / 2, dy = 90;
       drawCard(babe, dx, dy, dw, dh, {
         locked: count === 0,
         count: count > 0 ? count : null,
@@ -2673,6 +2793,9 @@ state = "title";
 preloadHeroSprites().then(ok => {
   if (!ok) console.warn("[HBC] Hero sprites failed to load — using drawn fallback");
 });
+preloadCardArt().then(() => {
+  console.log("[HBC] card art ready");
+}).catch(e => console.warn("[HBC] card art preload", e));
 preloadCryAudio().then(() => {
   console.log("[HBC] cry audio ready", { oneshot: cryAudio.oneshotUrl, loop: cryAudio.loopUrl, webaudio: !!cryAudio.oneshotBuf });
 }).catch(e => console.warn("[HBC] cry audio preload", e));
@@ -2693,6 +2816,22 @@ window.__HBC = {
   getSlot: () => slot,
   getSlotQueue: () => slotQueue,
   getCardAspect: () => CARD_ASPECT,
+  getCardImgs: () => cardImgs,
+  forceSlotResult: (id) => {
+    const babe = babeById(id);
+    if (!babe) return false;
+    // Plant a finished-looking roll that awards this babe
+    const strip = [];
+    for (let i = 0; i < 24; i++) strip.push(CHAR_DEFS[i % CHAR_DEFS.length]);
+    strip.push(babe);
+    for (let i = 0; i < 4; i++) strip.push(CHAR_DEFS[i % CHAR_DEFS.length]);
+    slot = {
+      strip, result: babe, targetIndex: 24,
+      startOffset: 0, offset: 24, elapsed: 1.2, duration: 1.2,
+      done: true, revealT: 0,
+    };
+    return true;
+  },
   getCardLayouts: () => {
     const slot = { w: 72 * 0.7, h: cardHeight(72 * 0.7) };
     const collection = { w: 100, h: cardHeight(100) };
@@ -2746,6 +2885,7 @@ window.__HBC = {
     return true;
   },
   openCollection: () => { state = "collection"; gallery.selected = null; },
+  setGallerySelected: (id) => { gallery.selected = id; state = "collection"; },
   setGalleryFilter: (f) => { gallery.filter = f; gallery.scroll = 0; },
   getGallery: () => gallery,
   getBabePool: () => BABE_POOL,
