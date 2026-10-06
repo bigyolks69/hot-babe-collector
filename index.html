@@ -1601,6 +1601,26 @@ function makeCoins() {
   });
 }
 
+// Enemy sprites (Iris): Mini Oni = walker, Mochi Slime = hopper. 32x32, face RIGHT, feet on the bottom
+// row; drawn bottom-centre on the (unchanged) 28x28 / 26x26 hitbox, nearest-neighbour, flipped when dir<0.
+const ENEMY_SPRITES = [
+  "oni_idle_0", "oni_idle_1", "oni_walk_0", "oni_walk_1", "oni_walk_2", "oni_walk_3", "oni_squished",
+  "slime_idle_0", "slime_idle_1", "slime_squash", "slime_rise", "slime_fall", "slime_squished",
+];
+const ENEMY_IMG = {};
+for (const name of ENEMY_SPRITES) {
+  const im = new Image();
+  im.onerror = () => console.warn("[HBC] enemy sprite failed: " + name + " — using drawn fallback");
+  im.src = "art/enemies/pixel/" + name + ".png";
+  ENEMY_IMG[name] = im;
+}
+const ENEMY_SQUISH_SHOW = 0.35;   // squished frame stays this long after a stomp
+const ONI_WALK_FRAME = 0.12;      // s per walk frame at enemySpeed 1 (faster tiers animate faster)
+const ONI_IDLE_FRAME = 0.4;
+const SLIME_IDLE_FRAME = 0.35;
+const SLIME_PREHOP = 0.12;        // crouch before the hop impulse
+const SLIME_LAND = 0.08;          // squash after landing
+
 // Enemies: type 'walker' | 'hopper'
 function enemyOnPlat(type, xTile, platY, w, h, extra) {
   const top = platY * TILE;
@@ -2220,9 +2240,10 @@ function updatePlay(dt) {
 
   // enemies — gravity + ledge turns (never float mid-air)
   for (const e of enemies) {
-    if (!e.alive) continue;
+    if (!e.alive) { if (e.squishT != null) e.squishT += dt; continue; }
     e.prevX = e.x;
     e.prevY = e.y;
+    e.animT = (e.animT || 0) + dt;
 
     if (e.type === "flyer") updateFlyer(e, dt);
     else {
@@ -2243,6 +2264,11 @@ function updatePlay(dt) {
 
     const top = platformTopNear(e.x, e.w, e.y + e.h);
     const onGround = top != null && (e.y + e.h) >= top - 1 && (e.y + e.h) <= top + 18 && e.vy >= 0;
+    if (e.type === "hopper") {
+      if (onGround && !e.grounded) e.landT = SLIME_LAND; // just touched down → brief squash
+      if (e.landT > 0) e.landT -= dt;
+      e.grounded = onGround;
+    }
     if (onGround) {
       e.y = top - e.h;
       e.vy = 0;
@@ -2266,6 +2292,7 @@ function updatePlay(dt) {
 
     if (stomping) {
       e.alive = false;
+      e.squishT = 0; // show the squished frame briefly
       player.y = e.y - player.h;
       player.onGround = false;
       const jumpHeld = keys[" "] || keys["arrowup"] || keys["w"];
@@ -2363,6 +2390,34 @@ const FLYER_FRAMES = [
    ".............",
    "............."],
 ];
+// Frame for the walker (oni) / hopper (slime) from its current state
+function enemyFrame(e) {
+  const t = e.animT || 0;
+  if (e.type === "walker") {
+    const sp = (level && level.diff.enemySpeed) || 1;
+    if (Math.abs(e.vx) > 5) return "oni_walk_" + (Math.floor(t / (ONI_WALK_FRAME / sp)) % 4);
+    return "oni_idle_" + (Math.floor(t / ONI_IDLE_FRAME) % 2);
+  }
+  // hopper
+  if (e.grounded) {
+    if ((e.landT || 0) > 0 || (e.hopT || 0) > (e.hopEvery || 1.1) - SLIME_PREHOP) return "slime_squash";
+    return "slime_idle_" + (Math.floor(t / SLIME_IDLE_FRAME) % 2);
+  }
+  if (e.vy < -50) return "slime_rise";
+  return "slime_fall";
+}
+function drawEnemySprite(e, name) {
+  const im = ENEMY_IMG[name];
+  if (!imgOk(im)) return false;
+  const dx = Math.round(e.x + e.w / 2 - 16), dy = Math.round(e.y + e.h - 32);
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  if (e.dir < 0) { ctx.translate(dx + 32, dy); ctx.scale(-1, 1); ctx.drawImage(im, 0, 0, 32, 32); }
+  else ctx.drawImage(im, dx, dy, 32, 32);
+  ctx.restore();
+  return true;
+}
+
 function drawFlyer(e) {
   const tell = e.mode === "tell";
   const pal = { W: "#5a3fb0", w: "#c3adff", B: "#8f6cf2", b: "#c9b8ff", E: tell ? "#ff4a6a" : "#5fe8ff", F: "#ffffff" };
@@ -2553,9 +2608,16 @@ function drawWorld() {
 
   // enemies
   for (const e of enemies) {
-    if (!e.alive || e.x + e.w < viewL || e.x > viewR) continue;
+    if (e.x + e.w < viewL || e.x > viewR) continue;
+    if (!e.alive) {
+      if (e.squishT != null && e.squishT < ENEMY_SQUISH_SHOW && e.type !== "flyer")
+        drawEnemySprite(e, e.type === "walker" ? "oni_squished" : "slime_squished");
+      continue;
+    }
     if (e.type === "flyer") {
       drawFlyer(e);
+    } else if (drawEnemySprite(e, enemyFrame(e))) {
+      // sprite drawn
     } else if (e.type === "walker") {
       ctx.fillStyle = "#e85d4c";
       roundRect(e.x, e.y, e.w, e.h, 4);
@@ -3683,6 +3745,8 @@ window.__HBC = {
     TILE, LEVEL_H, physics: { GRAV, MOVE_ACC, MOVE_MAX, FRICTION, JUMP_V, JUMP_CUT, PLAYER_W, PLAYER_H } }),
   getLevelDefs: () => LEVELS.map(d => d.id),
   getProgress: () => ({ ...progress }),
+  getEnemySprites: () => Object.fromEntries(ENEMY_SPRITES.map(n => [n, imgOk(ENEMY_IMG[n])])),
+  getEnemyFrames: () => enemies.map(e => ({ type: e.type, alive: e.alive, dir: e.dir, frame: e.type === "flyer" ? null : (e.alive ? enemyFrame(e) : (e.squishT != null && e.squishT < ENEMY_SQUISH_SHOW ? e.type + "-squished" : null)) })),
   getBgm: () => ({ mode: bgm.mode, url: bgm.url, wanted: bgm.wanted, starts: bgm.starts, playing: !!bgm.src || !!(bgm.html && !bgm.html.paused),
     loop: bgm.src ? bgm.src.loop : (bgm.html ? bgm.html.loop : null), loopStart: bgm.loopStart, loopEnd: bgm.loopEnd,
     duration: bgm.buf ? bgm.buf.duration : null, pos: bgmPosition(), ctx: actx && actx.state, ctxTime: actx && actx.currentTime,
