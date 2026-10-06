@@ -370,6 +370,7 @@ const sfx = {
 };
 
 // Death cry (Music Macky): 1.500s one-shot, sobs on 260ms beats
+const CRY_VOLUME = 0.5; // relative to prior full-level cry (other SFX unchanged)
 const cryAudio = {
   oneshotBuf: null,
   loopBuf: null,       // available; only if dying ever exceeds 1.5s
@@ -450,7 +451,10 @@ function playDeathCry() {
     if (cryAudio.oneshotBuf && actx) {
       const src = actx.createBufferSource();
       src.buffer = cryAudio.oneshotBuf;
-      src.connect(masterGain || actx.destination);
+      const cryGain = actx.createGain();
+      cryGain.gain.value = CRY_VOLUME;
+      src.connect(cryGain);
+      cryGain.connect(masterGain || actx.destination);
       src.onended = () => {
         if (cryAudio.source === src) {
           cryAudio.source = null;
@@ -469,6 +473,7 @@ function playDeathCry() {
   // HTMLAudio fallback
   if (!cryHtmlAudio) cryHtmlAudio = new Audio(cryAudio.oneshotUrl || "audio/cry_death.mp3");
   cryHtmlAudio.muted = muted;
+  cryHtmlAudio.volume = CRY_VOLUME;
   cryHtmlAudio.currentTime = 0;
   cryAudio.startedAt = wall / 1000;
   const p = cryHtmlAudio.play();
@@ -485,7 +490,10 @@ function maybeStartCryLoop() {
       const src = actx.createBufferSource();
       src.buffer = cryAudio.loopBuf;
       src.loop = true;
-      src.connect(masterGain || actx.destination);
+      const cryGain = actx.createGain();
+      cryGain.gain.value = CRY_VOLUME;
+      src.connect(cryGain);
+      cryGain.connect(masterGain || actx.destination);
       cryAudio.loopSource = src;
       src.start(0);
       console.log("[HBC] cry_death_loop start (overflow)");
@@ -494,6 +502,7 @@ function maybeStartCryLoop() {
   } catch (_) {}
   if (cryLoopHtmlAudio) {
     cryLoopHtmlAudio.muted = muted;
+    cryLoopHtmlAudio.volume = CRY_VOLUME;
     cryLoopHtmlAudio.currentTime = 0;
     const p = cryLoopHtmlAudio.play();
     if (p && p.catch) p.catch(() => {});
