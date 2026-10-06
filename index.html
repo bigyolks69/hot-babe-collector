@@ -602,23 +602,35 @@ try {
   if (qs.get("debugRarity")) debugRarity = qs.get("debugRarity");
 } catch (e) {}
 
+// A babe owned MAX_COPIES times leaves the pull pool (losing one on death puts her back).
+const MAX_COPIES = 6;
+function isMaxed(id) { return (collection[id] || 0) >= MAX_COPIES; }
+function pullableBabes() { return BABE_POOL.filter(b => !isMaxed(b.id)); }
+function clampCount(n) { return Math.max(0, Math.min(MAX_COPIES, Math.floor(+n || 0))); }
+
+// Returns a babe that isn't maxed, or null when all babes are maxed.
 function rollCharacter() {
+  // Debug forced pulls never plant a maxed babe (maxed ids are skipped)
   while (debugPulls.length) {
     const forced = babeById(debugPulls.shift());
-    if (forced) return forced;
+    if (forced && !isMaxed(forced.id)) return forced;
   }
   if (debugRarity) {
-    const tierPool = BABE_POOL.filter(c => c.rarity === debugRarity);
+    const tierPool = BABE_POOL.filter(c => c.rarity === debugRarity && !isMaxed(c.id));
     if (tierPool.length) return tierPool[Math.floor(Math.random() * tierPool.length)];
   }
-  // Tier first (88% / 10% / 2%), then uniform within that tier
-  const total = RARITIES.reduce((s, r) => s + r.weight, 0);
+  // Tier first (88% / 10% / 2%), then uniform among that tier's non-maxed babes.
+  // Fully maxed tiers drop out and the roll is redone over the remaining tiers,
+  // keeping their relative weights.
+  const tiers = RARITIES
+    .map(r => ({ r, pool: BABE_POOL.filter(c => c.rarity === r.id && !isMaxed(c.id)) }))
+    .filter(t => t.pool.length > 0);
+  if (!tiers.length) return null;
+  const total = tiers.reduce((s, t) => s + t.r.weight, 0);
   let n = Math.random() * total;
-  let rarity = RARITIES[0];
-  for (const r of RARITIES) { n -= r.weight; if (n <= 0) { rarity = r; break; } }
-  const pool = BABE_POOL.filter(c => c.rarity === rarity.id);
-  if (!pool.length) return BABE_POOL[0];
-  return pool[Math.floor(Math.random() * pool.length)];
+  let pick = tiers[tiers.length - 1];
+  for (const t of tiers) { n -= t.r.weight; if (n <= 0) { pick = t; break; } }
+  return pick.pool[Math.floor(Math.random() * pick.pool.length)];
 }
 
 function ownedUniqueCount(col) {
@@ -639,7 +651,7 @@ function migrateCollectionCounts(col) {
     if (n <= 0) continue;
     const id = BABE_ID_MIGRATE[k] || k;
     if (!babeById(id)) continue; // drop unknown / removed placeholders
-    out[id] = (out[id] || 0) + n;
+    out[id] = clampCount((out[id] || 0) + n); // never above MAX_COPIES
   }
   return out;
 }
@@ -668,6 +680,7 @@ function loadCollection() {
   } catch { return {}; }
 }
 function saveCollection(col) {
+  for (const k of Object.keys(col)) col[k] = clampCount(col[k]); // hard cap on every save
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify(col)); // keep v1 readable
     localStorage.setItem(SAVE_KEY_V2, JSON.stringify({ v: 2, counts: col }));
@@ -1213,7 +1226,7 @@ function drawCard(char, x, y, w, h, opts) {
     ctx.font = `bold ${Math.max(10, Math.floor(w * 0.12))}px sans-serif`;
     ctx.fillStyle = "#fff";
     ctx.fillText(char.name, x + w / 2, y + h - 12);
-    if (opts.showRarity !== false) {
+    if (opts.showRarity !== false && !maxTagShown(opts, w, iconOnly)) { // MAX tag takes that corner
       ctx.font = `${Math.max(8, Math.floor(w * 0.08))}px sans-serif`;
       ctx.fillStyle = rar.color;
       ctx.fillText(rar.label, x + w / 2, y + 14);
@@ -1223,7 +1236,30 @@ function drawCard(char, x, y, w, h, opts) {
   drawCardBadges(char, x, y, w, h, opts, iconOnly);
 }
 
+function maxTagShown(opts, w, iconOnly) {
+  const isMax = opts.max != null ? !!opts.max : (opts.count != null && opts.count >= MAX_COPIES);
+  return isMax && !iconOnly && w >= 44;
+}
 function drawCardBadges(char, x, y, w, h, opts, iconOnly) {
+  // MAX tag (owned MAX_COPIES): top-left pill, only where it stays readable
+  if (maxTagShown(opts, w, iconOnly)) {
+    const fs = Math.max(8, Math.min(12, Math.floor(w * 0.11)));
+    ctx.save();
+    ctx.font = "bold " + fs + "px sans-serif";
+    const tw = Math.ceil(ctx.measureText("MAX").width) + 8;
+    const th = fs + 5;
+    ctx.fillStyle = "#ffd24a";
+    roundRect(x + 4, y + 4, tw, th, 3);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(60,20,0,0.85)";
+    ctx.lineWidth = 1;
+    roundRect(x + 4, y + 4, tw, th, 3);
+    ctx.stroke();
+    ctx.fillStyle = "#3a1600";
+    ctx.textAlign = "center";
+    ctx.fillText("MAX", x + 4 + tw / 2, y + 4 + th - 4);
+    ctx.restore();
+  }
   // Dupe badge
   if (opts.count != null && opts.count > 1) {
     if (iconOnly) {
@@ -1715,18 +1751,21 @@ function beginSlotRoll() {
   // Precompute result and plant it at targetIndex BEFORE spinning.
   // Offset eases exactly to that index — no end snap/swap.
   const result = rollCharacter();
+  if (!result) { addCallout("All babes maxed out!", "#ffe66d"); return false; }
   const targetIndex = 24;
   const strip = [];
+  // Filler: babes still in the pool (fall back to everyone when few remain, so the strip looks full)
+  const avail = pullableBabes();
+  const filler = avail.length >= 4 ? avail : CHAR_DEFS;
+  const others = filler.filter(b => b.id !== result.id);
   for (let i = 0; i < targetIndex; i++) {
-    let pick;
-    do {
-      pick = CHAR_DEFS[Math.floor(Math.random() * CHAR_DEFS.length)];
-    } while (i > targetIndex - 4 && pick.id === result.id); // keep approach cards visually distinct
-    strip.push(pick);
+    // keep approach cards visually distinct from the result
+    const src = i > targetIndex - 4 && others.length ? others : filler;
+    strip.push(src[Math.floor(Math.random() * src.length)]);
   }
   strip.push(result);
   for (let i = 0; i < 4; i++) {
-    strip.push(CHAR_DEFS[Math.floor(Math.random() * CHAR_DEFS.length)]);
+    strip.push(filler[Math.floor(Math.random() * filler.length)]);
   }
   slot = {
     strip,
@@ -1740,12 +1779,16 @@ function beginSlotRoll() {
     revealT: 0,
   };
   sfx.coin();
+  return true;
 }
 
 // Coin pickup: start a roll, or queue if one is already playing. Gameplay never pauses.
 function onCoinCollected() {
   if (slot) {
     slotQueue++;
+    sfx.coin();
+  } else if (!pullableBabes().length) {
+    addCallout("All babes maxed out!", "#ffe66d"); // no roll
     sfx.coin();
   } else {
     beginSlotRoll();
@@ -1756,7 +1799,9 @@ function finishSlot() {
   if (!slot) return;
   const id = slot.result.id;
   const prev = collection[id] || 0;
-  collection[id] = prev + 1;
+  collection[id] = clampCount(prev + 1);
+  const nowMax = collection[id] >= MAX_COPIES;
+  const maxTag = nowMax ? " MAX" : "";
   saveCollection(collection);
   runGained.push(id);
   focusHudOnBabe(id);
@@ -1775,15 +1820,17 @@ function finishSlot() {
     }
     sfx.new();
   } else {
-    if (rar.id === "ultra") addCallout("✦ ULTRA RARE DUPE x" + (prev + 1) + " — " + nm, "#ffd24a");
-    else if (rar.id === "rare") addCallout("★ RARE DUPE x" + (prev + 1) + " — " + nm, "#9ad0ff");
-    else addCallout("DUPE x" + (prev + 1) + " — " + nm + " · Common", "#9ad0ff");
+    const n = collection[id];
+    if (rar.id === "ultra") addCallout("✦ ULTRA RARE DUPE x" + n + maxTag + " — " + nm, "#ffd24a");
+    else if (rar.id === "rare") addCallout("★ RARE DUPE x" + n + maxTag + " — " + nm, "#9ad0ff");
+    else addCallout("DUPE x" + n + maxTag + " — " + nm + " · Common", nowMax ? "#ffe66d" : "#9ad0ff");
   }
   slot = null;
   // Chain queued rolls immediately (even over death/win overlays — player earned them)
   if (slotQueue > 0) {
     slotQueue--;
-    beginSlotRoll();
+    // If that was the last babe in the pool, the queued pickups have nothing left to roll
+    if (!beginSlotRoll()) slotQueue = 0;
   }
 }
 
@@ -2310,11 +2357,12 @@ function drawHUD() {
   for (const c of callouts) {
     const y = c.y == null ? calloutBaseY() : c.y;
     ctx.globalAlpha = calloutAlpha(c);
+    ctx.font = "bold 18px sans-serif";
+    const cwBox = Math.max(280, Math.ceil(ctx.measureText(c.text).width) + 32);
     ctx.fillStyle = "rgba(0,0,0,0.55)";
-    roundRect(W/2 - 140, y, 280, CALLOUT_H, 8);
+    roundRect(W/2 - cwBox/2, y, cwBox, CALLOUT_H, 8);
     ctx.fill();
     ctx.fillStyle = c.color;
-    ctx.font = "bold 18px sans-serif";
     ctx.textAlign = "center";
     ctx.fillText(c.text, W/2, y + 24);
     ctx.globalAlpha = 1;
@@ -2615,7 +2663,7 @@ function drawCollection() {
       ctx.fillText(rar.label, W / 2, dy + dh + 60);
       ctx.fillStyle = "#ccc";
       ctx.font = "14px sans-serif";
-      ctx.fillText(count > 0 ? ("Owned ×" + count) : "Not yet collected", W / 2, dy + dh + 84);
+      ctx.fillText(count > 0 ? ("Owned ×" + count + (count >= MAX_COPIES ? " · MAX (out of the pull pool)" : "")) : "Not yet collected", W / 2, dy + dh + 84);
       ctx.fillStyle = "rgba(255,255,255,0.2)";
       roundRect(W / 2 - 50, H - 52, 100, 30, 8);
       ctx.fill();
@@ -2930,7 +2978,7 @@ function drawWin() {
       const babe = babeById(gained[i]);
       if (!babe) continue;
       const x = origin + i * (cw + gap);
-      drawCard(babe, x, 168, cw, ch, { showRarity: false });
+      drawCard(babe, x, 168, cw, ch, { showRarity: false, max: isMaxed(babe.id) });
     }
     ctx.restore();
     if (scrollMax > 0) {
@@ -3076,14 +3124,19 @@ window.__HBC = {
   // Debug: force the next pull(s) to a specific babe / tier (tier data is untouched)
   forcePull: (id) => { if (!babeById(id)) return false; debugPulls.push(id); return true; },
   setDebugRarity: (tier) => { debugRarity = tier || null; },
-  grantBabe: (id, n) => { if (!babeById(id)) return false; collection[id] = (collection[id] || 0) + (n || 1); saveCollection(collection); return true; },
+  grantBabe: (id, n) => { if (!babeById(id)) return false; collection[id] = clampCount((collection[id] || 0) + (n || 1)); saveCollection(collection); return true; },
+  getMaxCopies: () => MAX_COPIES,
+  isMaxed: (id) => isMaxed(id),
+  getPullable: () => pullableBabes().map(b => b.id),
+  rollMany: (n) => { const m = {}; for (let i = 0; i < n; i++) { const b = rollCharacter(); const k = b ? b.id : "(none)"; m[k] = (m[k] || 0) + 1; } return m; },
+  setCount: (id, n) => { if (!babeById(id)) return false; const c = clampCount(n); if (c > 0) collection[id] = c; else delete collection[id]; saveCollection(collection); return true; },
   getRarityArt: () => RARITY_ART,
   getTierCounts: () => BABE_POOL.reduce((m, b) => (m[b.rarity] = (m[b.rarity] || 0) + 1, m), {}),
   getCardAspect: () => CARD_ASPECT,
   getCardImgs: () => cardImgs,
   forceSlotResult: (id) => {
     const babe = babeById(id);
-    if (!babe) return false;
+    if (!babe || isMaxed(id)) return false; // never plant a maxed babe
     // Plant a finished-looking roll that awards this babe
     const strip = [];
     for (let i = 0; i < 24; i++) strip.push(CHAR_DEFS[i % CHAR_DEFS.length]);
