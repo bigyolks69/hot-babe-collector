@@ -57,7 +57,8 @@
   .tbtn:active, .tbtn.active { background: rgba(255,120,180,0.45); }
   #tLeft  { left: 20px; bottom: 30px; }
   #tRight { left: 96px; bottom: 30px; }
-  #tJump  { right: 20px; bottom: 30px; width: 80px; height: 80px; }
+  #tJump  { right: 20px; bottom: 30px; width: 72px; height: 72px; }
+  /* Keep C at top-right; live babe tray sits above jump on canvas */
   #tColl  { right: 20px; top: 70px; width: 52px; height: 52px; font-size: 16px; }
 </style>
 </head>
@@ -312,29 +313,69 @@ function drawCard(char, x, y, w, h, opts) {
   roundRect(x+1.5, y+1.5, w-3, h-3, 7);
   ctx.stroke();
 
-  // inner frame
+  // inner frame (tighter on icon-only thumbs — no text band)
   ctx.strokeStyle = locked ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.25)";
   ctx.lineWidth = 1;
-  roundRect(x+8, y+8, w-16, h-28, 4);
+  if (opts.iconOnly) {
+    roundRect(x + 3, y + 3, w - 6, h - 6, 4);
+  } else {
+    roundRect(x+8, y+8, w-16, h-28, 4);
+  }
   ctx.stroke();
 
-  // silhouette
-  drawSilhouette(x + w/2, y + h*0.42, Math.min(w, h)*0.55, char.shape,
-    locked ? "#3a3a44" : "rgba(255,255,255,0.92)");
+  const iconOnly = !!opts.iconOnly;
 
-  // name + rarity
-  ctx.textAlign = "center";
-  ctx.font = `bold ${Math.max(10, Math.floor(w*0.12))}px sans-serif`;
-  ctx.fillStyle = locked ? "#666" : "#fff";
-  ctx.fillText(locked ? "???" : char.name, x + w/2, y + h - 12);
+  // silhouette — centered more in icon-only thumbs
+  drawSilhouette(
+    x + w/2,
+    y + h * (iconOnly ? 0.52 : 0.42),
+    Math.min(w, h) * (iconOnly ? 0.62 : 0.55),
+    char.shape,
+    locked ? "#3a3a44" : "rgba(255,255,255,0.92)"
+  );
 
-  if (!locked && opts.showRarity !== false) {
-    ctx.font = `${Math.max(8, Math.floor(w*0.08))}px sans-serif`;
-    ctx.fillStyle = rar.color;
-    ctx.fillText(rar.label, x + w/2, y + 14);
+  if (!iconOnly) {
+    // name + rarity
+    ctx.textAlign = "center";
+    ctx.font = `bold ${Math.max(10, Math.floor(w*0.12))}px sans-serif`;
+    ctx.fillStyle = locked ? "#666" : "#fff";
+    ctx.fillText(locked ? "???" : char.name, x + w/2, y + h - 12);
+
+    if (!locked && opts.showRarity !== false) {
+      ctx.font = `${Math.max(8, Math.floor(w*0.08))}px sans-serif`;
+      ctx.fillStyle = rar.color;
+      ctx.fillText(rar.label, x + w/2, y + 14);
+    }
   }
 
-  if (opts.count != null && opts.count > 0) {
+  // Dupe badge: full label on normal cards; tiny digit only on icon-only if count>1 and room
+  if (opts.count != null && opts.count > 1) {
+    if (iconOnly) {
+      if (w >= 22) {
+        const r = Math.max(5, Math.min(7, w * 0.22));
+        ctx.fillStyle = "rgba(0,0,0,0.65)";
+        ctx.beginPath();
+        ctx.arc(x + w - r - 2, y + r + 2, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#ffe66d";
+        ctx.font = "bold " + Math.max(7, Math.floor(r * 1.35)) + "px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(String(opts.count), x + w - r - 2, y + r + 2.5);
+        ctx.textBaseline = "alphabetic";
+      }
+    } else if (opts.count > 0) {
+      const bw = Math.max(16, Math.min(22, w * 0.35));
+      const bh = Math.max(12, Math.min(16, h * 0.14));
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      roundRect(x + w - bw - 4, y + 4, bw, bh, 3);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold " + Math.max(8, Math.floor(bh * 0.75)) + "px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("x" + opts.count, x + w - bw / 2 - 4, y + 4 + bh * 0.78);
+    }
+  } else if (!iconOnly && opts.count != null && opts.count > 0) {
     const bw = Math.max(16, Math.min(22, w * 0.35));
     const bh = Math.max(12, Math.min(16, h * 0.14));
     ctx.fillStyle = "rgba(0,0,0,0.55)";
@@ -994,6 +1035,63 @@ function drawWorld() {
   ctx.restore();
 }
 
+
+// Tiny always-on babe tray (gameplay only) — ~1/8 area of death mini panel, CARD_ASPECT locked
+function drawHudLiveBabes() {
+  if (state !== "play") return;
+
+  const cols = 6, rows = 2;
+  const gapX = 3, gapY = 3;
+  const padX = 6, padTop = 14, padBot = 6;
+  // Linear ~1/2.8 of death mini card (~115px) → ~40; nudge smaller for "really small but legible"
+  const cw = 30;
+  const ch = cardHeight(cw);
+  const gridW = cols * cw + (cols - 1) * gapX;
+  const gridH = rows * ch + (rows - 1) * gapY;
+  const panelW = gridW + padX * 2;
+  const panelH = padTop + gridH + padBot;
+
+  // Bottom-right; lift above mobile jump button (~80px) when touch controls are shown
+  const margin = 10;
+  const lift = isTouch ? 108 : 18;
+  const panelX = W - panelW - margin;
+  const panelY = H - panelH - lift;
+
+  ctx.save();
+  ctx.globalAlpha = 0.72;
+  ctx.fillStyle = "rgba(12,8,22,0.75)";
+  roundRect(panelX, panelY, panelW, panelH, 8);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,90,154,0.4)";
+  ctx.lineWidth = 1.5;
+  roundRect(panelX, panelY, panelW, panelH, 8);
+  ctx.stroke();
+  ctx.globalAlpha = 0.9;
+  ctx.fillStyle = "#ffb0d0";
+  ctx.font = "bold 9px sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText("Babes", panelX + padX, panelY + 10);
+  const unique = Object.keys(collection).filter(k => collection[k] > 0).length;
+  ctx.textAlign = "right";
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  ctx.fillText(unique + "/" + CHAR_DEFS.length, panelX + panelW - padX, panelY + 10);
+
+  for (let i = 0; i < CHAR_DEFS.length; i++) {
+    const col = i % cols, row = Math.floor(i / cols);
+    const x = panelX + padX + col * (cw + gapX);
+    const y = panelY + padTop + row * (ch + gapY);
+    const char = CHAR_DEFS[i];
+    const count = collection[char.id] || 0;
+    ctx.globalAlpha = count > 0 ? 0.95 : 0.55;
+    drawCard(char, x, y, cw, ch, {
+      locked: count === 0,
+      count: count > 1 ? count : null,
+      iconOnly: true,
+    });
+  }
+  ctx.restore();
+}
+
 function drawHUD() {
   // hearts
   for (let i = 0; i < 3; i++) {
@@ -1017,7 +1115,7 @@ function drawHUD() {
   ctx.fillStyle = "#fff";
   ctx.font = "bold 13px sans-serif";
   ctx.textAlign = "left";
-  ctx.fillText("Cards " + unique + "/" + CHAR_DEFS.length, W - 158, 24);
+  ctx.fillText("Babes " + unique + "/" + CHAR_DEFS.length, W - 158, 24);
   ctx.font = "11px sans-serif";
   ctx.fillStyle = "#ffb0d0";
   ctx.fillText("Total pulls: " + total + "  [C]", W - 158, 38);
@@ -1041,6 +1139,8 @@ function drawHUD() {
     ctx.fillText(c.text, W/2, 80);
     ctx.globalAlpha = 1;
   }
+
+  drawHudLiveBabes();
 }
 
 function drawSlot() {
@@ -1114,7 +1214,7 @@ function drawCollection() {
   ctx.fillStyle = "#ff8ec8";
   ctx.font = "bold 28px sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("Collection Gallery", W/2, 42);
+  ctx.fillText("Babe Gallery", W/2, 42);
   ctx.font = "13px sans-serif";
   ctx.fillStyle = "#aaa";
   ctx.fillText("Press C or Esc to close", W/2, 64);
@@ -1140,7 +1240,7 @@ function drawCollection() {
   const unique = Object.keys(collection).length;
   ctx.fillStyle = "#fff";
   ctx.font = "14px sans-serif";
-  ctx.fillText("Owned " + unique + " / " + CHAR_DEFS.length + " unique", W/2, H - 28);
+  ctx.fillText("Owned " + unique + " / " + CHAR_DEFS.length + " unique babes", W/2, H - 28);
 }
 
 function drawTitle() {
@@ -1163,7 +1263,7 @@ function drawTitle() {
 
   ctx.fillStyle = "#fff";
   ctx.font = "16px sans-serif";
-  ctx.fillText("Collect character cards • Stomp foes • Reach the flag", W/2, 300);
+  ctx.fillText("Collect babes • Stomp foes • Reach the flag", W/2, 300);
   ctx.fillStyle = "#ffe66d";
   ctx.font = "bold 20px sans-serif";
   const blink = Math.sin(performance.now()/300) > 0;
@@ -1171,7 +1271,7 @@ function drawTitle() {
 
   ctx.fillStyle = "#999";
   ctx.font = "12px sans-serif";
-  ctx.fillText("←→ / A D move  •  Space / W / ↑ jump  •  C collection", W/2, 420);
+  ctx.fillText("←→ / A D move  •  Space / W / ↑ jump  •  C babe gallery", W/2, 420);
 }
 
 // Compact collection strip for death / win overlays
@@ -1223,7 +1323,7 @@ function drawMiniCollection(opts) {
   ctx.fillStyle = "#ffb0d0";
   ctx.font = "bold 13px sans-serif";
   ctx.textAlign = "left";
-  ctx.fillText("Collection", panelX + 14, panelY + 20);
+  ctx.fillText("Babes", panelX + 14, panelY + 20);
   ctx.fillStyle = "#fff";
   ctx.font = "12px sans-serif";
   ctx.textAlign = "right";
@@ -1299,11 +1399,11 @@ function drawDead() {
     ctx.fillText("LOST: " + loseAnim.name, W/2, 108);
     ctx.fillStyle = "#ccc";
     ctx.font = "13px sans-serif";
-    ctx.fillText("A random card was taken from your collection", W/2, 132);
+    ctx.fillText("A random babe was taken from your collection", W/2, 132);
   } else {
     ctx.fillStyle = "#ccc";
     ctx.font = "15px sans-serif";
-    ctx.fillText("No cards to lose… this time.", W/2, 108);
+    ctx.fillText("No babes to lose… this time.", W/2, 108);
   }
   ctx.fillStyle = "#aaa";
   ctx.font = "12px sans-serif";
@@ -1349,7 +1449,7 @@ function drawWin() {
   ctx.fillText("Press R or Enter to Restart", W/2, Math.min(H - 48, 118 + mini.panelH + 28));
   ctx.fillStyle = "#aaa";
   ctx.font = "13px sans-serif";
-  ctx.fillText("Press C to view full collection", W/2, Math.min(H - 26, 118 + mini.panelH + 50));
+  ctx.fillText("Press C to view full babe gallery", W/2, Math.min(H - 26, 118 + mini.panelH + 50));
 }
 
 function frame(dt) {
@@ -1461,6 +1561,7 @@ window.__HBC = {
       worldPickup: { ...world, ratio: world.w / world.h },
       miniDeath: { w: death.cw, h: death.ch, ratio: death.cw / death.ch },
       miniWin: { w: win.cw, h: win.ch, ratio: win.cw / win.ch },
+      hudLive: { w: 30, h: cardHeight(30), ratio: 30 / cardHeight(30) },
     };
   },
   getCenteredCard: () => {
