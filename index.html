@@ -1,0 +1,1324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Hot Babe Collector — Big Salty Gaming Studio</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #1a1020;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #wrap {
+    position: relative;
+    width: 100%; height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  canvas#game {
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    max-width: 100%;
+    max-height: 100%;
+    background: #2a1840;
+    box-shadow: 0 0 40px rgba(255,80,140,0.25);
+  }
+  #touch {
+    display: none;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  #touch.show { display: block; }
+  .tbtn {
+    position: absolute;
+    pointer-events: auto;
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.18);
+    border: 2px solid rgba(255,255,255,0.35);
+    color: #fff;
+    font-size: 22px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  .tbtn:active, .tbtn.active { background: rgba(255,120,180,0.45); }
+  #tLeft  { left: 20px; bottom: 30px; }
+  #tRight { left: 96px; bottom: 30px; }
+  #tJump  { right: 20px; bottom: 30px; width: 80px; height: 80px; }
+  #tColl  { right: 20px; top: 70px; width: 52px; height: 52px; font-size: 16px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game" width="960" height="540"></canvas>
+  <div id="touch">
+    <button class="tbtn" id="tLeft">◀</button>
+    <button class="tbtn" id="tRight">▶</button>
+    <button class="tbtn" id="tJump">▲</button>
+    <button class="tbtn" id="tColl">C</button>
+  </div>
+</div>
+<script>
+"use strict";
+
+// ============================================================
+// Hot Babe Collector — Big Salty Gaming Studio
+// Prototype: self-contained Canvas 2D platformer
+// ============================================================
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const W = canvas.width, H = canvas.height;
+
+// ---------- Tiny WebAudio SFX (no files) ----------
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let actx = null;
+function ensureAudio() {
+  if (!actx) actx = new AudioCtx();
+  if (actx.state === "suspended") actx.resume();
+}
+function beep(freq, dur, type, vol, slide) {
+  try {
+    ensureAudio();
+    const t0 = actx.currentTime;
+    const o = actx.createOscillator();
+    const g = actx.createGain();
+    o.type = type || "square";
+    o.frequency.setValueAtTime(freq, t0);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, slide), t0 + dur);
+    g.gain.setValueAtTime(vol || 0.08, t0);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+    o.connect(g); g.connect(actx.destination);
+    o.start(t0); o.stop(t0 + dur + 0.02);
+  } catch (_) {}
+}
+const sfx = {
+  jump:  () => beep(420, 0.12, "square", 0.07, 280),
+  coin:  () => { beep(880, 0.08, "square", 0.06); setTimeout(() => beep(1175, 0.12, "square", 0.05), 60); },
+  tick:  () => beep(600 + Math.random() * 400, 0.03, "triangle", 0.035),
+  hit:   () => beep(160, 0.25, "sawtooth", 0.09, 60),
+  stomp: () => beep(200, 0.1, "square", 0.07, 80),
+  lose:  () => { beep(300, 0.2, "sawtooth", 0.08, 100); setTimeout(() => beep(150, 0.3, "sawtooth", 0.07, 50), 180); },
+  win:   () => { [523,659,784,1047].forEach((f,i) => setTimeout(() => beep(f, 0.18, "square", 0.06), i*120)); },
+  new:   () => { beep(700, 0.1, "square", 0.06); setTimeout(() => beep(1050, 0.2, "square", 0.06), 100); },
+};
+
+// ---------- Character pool (12 placeholders) ----------
+const RARITIES = [
+  { id: "common",    label: "Common",    color: "#9aa0a6", weight: 50 },
+  { id: "rare",      label: "Rare",      color: "#4ea1ff", weight: 28 },
+  { id: "epic",      label: "Epic",      color: "#c06bff", weight: 15 },
+  { id: "legendary", label: "Legendary", color: "#ffb020", weight: 7 },
+];
+
+const CHAR_DEFS = [
+  { id: "ruby",   name: "Ruby",   rarity: "common",    hue: 0,   shape: "hourglass" },
+  { id: "luna",   name: "Luna",   rarity: "common",    hue: 220, shape: "star" },
+  { id: "jade",   name: "Jade",   rarity: "common",    hue: 140, shape: "diamond" },
+  { id: "nova",   name: "Nova",   rarity: "common",    hue: 40,  shape: "circle" },
+  { id: "kira",   name: "Kira",   rarity: "rare",      hue: 300, shape: "heart" },
+  { id: "mira",   name: "Mira",   rarity: "rare",      hue: 180, shape: "hourglass" },
+  { id: "suki",   name: "Suki",   rarity: "rare",      hue: 25,  shape: "star" },
+  { id: "zara",   name: "Zara",   rarity: "epic",      hue: 330, shape: "diamond" },
+  { id: "ivy",    name: "Ivy",    rarity: "epic",      hue: 110, shape: "heart" },
+  { id: "vex",    name: "Vex",    rarity: "epic",      hue: 270, shape: "circle" },
+  { id: "aurora", name: "Aurora", rarity: "legendary", hue: 50,  shape: "star" },
+  { id: "sol",    name: "Sol",    rarity: "legendary", hue: 15,  shape: "hourglass" },
+];
+
+function rarityOf(id) {
+  const c = CHAR_DEFS.find(x => x.id === id);
+  return RARITIES.find(r => r.id === (c ? c.rarity : "common"));
+}
+
+function rollCharacter() {
+  const total = RARITIES.reduce((s, r) => s + r.weight, 0);
+  let n = Math.random() * total;
+  let rarity = RARITIES[0];
+  for (const r of RARITIES) { n -= r.weight; if (n <= 0) { rarity = r; break; } }
+  const pool = CHAR_DEFS.filter(c => c.rarity === rarity.id);
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+// ---------- localStorage collection ----------
+const SAVE_KEY = "hbc_collection_v1";
+function loadCollection() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return {};
+    const obj = JSON.parse(raw);
+    return obj && typeof obj === "object" ? obj : {};
+  } catch { return {}; }
+}
+function saveCollection(col) {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(col)); } catch {}
+}
+
+// ---------- Input ----------
+const keys = Object.create(null);
+const justPressed = Object.create(null);
+window.addEventListener("keydown", e => {
+  const k = e.key.toLowerCase();
+  if (["arrowup","arrowdown","arrowleft","arrowright"," ","w","a","s","d","c","r","escape","enter"].includes(k) || e.code === "Space") {
+    e.preventDefault();
+  }
+  const code = e.code === "Space" ? " " : k;
+  if (!keys[code]) justPressed[code] = true;
+  keys[code] = true;
+  ensureAudio();
+});
+window.addEventListener("keyup", e => {
+  const code = e.code === "Space" ? " " : e.key.toLowerCase();
+  keys[code] = false;
+});
+
+// Touch controls
+const isTouch = ("ontouchstart" in window) || navigator.maxTouchPoints > 0;
+const touchEl = document.getElementById("touch");
+if (isTouch) touchEl.classList.add("show");
+function bindTouch(id, key) {
+  const el = document.getElementById(id);
+  const down = e => { e.preventDefault(); keys[key] = true; justPressed[key] = true; el.classList.add("active"); ensureAudio(); };
+  const up = e => { e.preventDefault(); keys[key] = false; el.classList.remove("active"); };
+  el.addEventListener("touchstart", down, { passive: false });
+  el.addEventListener("touchend", up, { passive: false });
+  el.addEventListener("touchcancel", up, { passive: false });
+  el.addEventListener("mousedown", down);
+  el.addEventListener("mouseup", up);
+  el.addEventListener("mouseleave", up);
+}
+bindTouch("tLeft", "a");
+bindTouch("tRight", "d");
+bindTouch("tJump", " ");
+bindTouch("tColl", "c");
+
+// ---------- Drawing helpers ----------
+function roundRect(x, y, w, h, r) {
+  r = Math.min(r, w/2, h/2);
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.arcTo(x+w, y, x+w, y+h, r);
+  ctx.arcTo(x+w, y+h, x, y+h, r);
+  ctx.arcTo(x, y+h, x, y, r);
+  ctx.arcTo(x, y, x+w, y, r);
+  ctx.closePath();
+}
+
+function drawSilhouette(cx, cy, size, shape, color, alpha) {
+  ctx.save();
+  ctx.globalAlpha = alpha == null ? 1 : alpha;
+  ctx.fillStyle = color;
+  ctx.translate(cx, cy);
+  const s = size;
+  if (shape === "hourglass") {
+    // stylized figure: head + torso
+    ctx.beginPath();
+    ctx.arc(0, -s*0.38, s*0.16, 0, Math.PI*2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-s*0.12, -s*0.2);
+    ctx.lineTo(s*0.12, -s*0.2);
+    ctx.lineTo(s*0.22, s*0.15);
+    ctx.lineTo(s*0.1, s*0.15);
+    ctx.lineTo(s*0.14, s*0.45);
+    ctx.lineTo(-s*0.14, s*0.45);
+    ctx.lineTo(-s*0.1, s*0.15);
+    ctx.lineTo(-s*0.22, s*0.15);
+    ctx.closePath();
+    ctx.fill();
+  } else if (shape === "star") {
+    ctx.beginPath();
+    for (let i = 0; i < 5; i++) {
+      const a = -Math.PI/2 + i * Math.PI*2/5;
+      const a2 = a + Math.PI/5;
+      ctx.lineTo(Math.cos(a)*s*0.45, Math.sin(a)*s*0.45);
+      ctx.lineTo(Math.cos(a2)*s*0.18, Math.sin(a2)*s*0.18);
+    }
+    ctx.closePath();
+    ctx.fill();
+  } else if (shape === "diamond") {
+    ctx.beginPath();
+    ctx.moveTo(0, -s*0.45); ctx.lineTo(s*0.35, 0); ctx.lineTo(0, s*0.45); ctx.lineTo(-s*0.35, 0);
+    ctx.closePath(); ctx.fill();
+  } else if (shape === "heart") {
+    ctx.beginPath();
+    ctx.moveTo(0, s*0.3);
+    ctx.bezierCurveTo(s*0.45, s*0.05, s*0.4, -s*0.3, 0, -s*0.15);
+    ctx.bezierCurveTo(-s*0.4, -s*0.3, -s*0.45, s*0.05, 0, s*0.3);
+    ctx.fill();
+  } else { // circle
+    ctx.beginPath();
+    ctx.arc(0, 0, s*0.38, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawCard(char, x, y, w, h, opts) {
+  opts = opts || {};
+  const rar = rarityOf(char.id);
+  const locked = !!opts.locked;
+  const glow = opts.glow || 0;
+
+  // glow
+  if (glow > 0) {
+    ctx.save();
+    ctx.shadowColor = rar.color;
+    ctx.shadowBlur = 18 * glow;
+    roundRect(x, y, w, h, 8);
+    ctx.fillStyle = rar.color;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // card body gradient
+  const g = ctx.createLinearGradient(x, y, x, y+h);
+  if (locked) {
+    g.addColorStop(0, "#2a2a32");
+    g.addColorStop(1, "#1a1a22");
+  } else {
+    g.addColorStop(0, `hsl(${char.hue}, 70%, 55%)`);
+    g.addColorStop(0.55, `hsl(${char.hue + 20}, 65%, 35%)`);
+    g.addColorStop(1, `hsl(${char.hue}, 50%, 18%)`);
+  }
+  roundRect(x, y, w, h, 8);
+  ctx.fillStyle = g;
+  ctx.fill();
+
+  // rarity border
+  ctx.strokeStyle = locked ? "#555" : rar.color;
+  ctx.lineWidth = 3;
+  roundRect(x+1.5, y+1.5, w-3, h-3, 7);
+  ctx.stroke();
+
+  // inner frame
+  ctx.strokeStyle = locked ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.25)";
+  ctx.lineWidth = 1;
+  roundRect(x+8, y+8, w-16, h-28, 4);
+  ctx.stroke();
+
+  // silhouette
+  drawSilhouette(x + w/2, y + h*0.42, Math.min(w, h)*0.55, char.shape,
+    locked ? "#3a3a44" : "rgba(255,255,255,0.92)");
+
+  // name + rarity
+  ctx.textAlign = "center";
+  ctx.font = `bold ${Math.max(10, Math.floor(w*0.12))}px sans-serif`;
+  ctx.fillStyle = locked ? "#666" : "#fff";
+  ctx.fillText(locked ? "???" : char.name, x + w/2, y + h - 12);
+
+  if (!locked && opts.showRarity !== false) {
+    ctx.font = `${Math.max(8, Math.floor(w*0.08))}px sans-serif`;
+    ctx.fillStyle = rar.color;
+    ctx.fillText(rar.label, x + w/2, y + 14);
+  }
+
+  if (opts.count != null && opts.count > 0) {
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    roundRect(x + w - 28, y + 6, 22, 16, 4);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 11px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("x" + opts.count, x + w - 17, y + 18);
+  }
+}
+
+// ---------- Level data ----------
+// Tile size 32. World is ~120 tiles wide (~3840px), tall enough for pits.
+const TILE = 32;
+const LEVEL_W = 130;
+const LEVEL_H = 18;
+
+// Solid platforms encoded as list of rects {x,y,w,h} in tiles
+const platforms = [
+  // Max comfortable rise ≈ 2 tiles (see MAX_JUMP_H / reachability). All steps ≤ 2.
+  // start ground
+  {x:0,y:15,w:18,h:3},
+  // ascending stairs (Δ2 each)
+  {x:20,y:13,w:5,h:1},
+  {x:27,y:11,w:4,h:1},
+  {x:33,y:13,w:6,h:1},
+  // mid ground with gap
+  {x:40,y:15,w:12,h:3},
+  {x:55,y:15,w:8,h:3},
+  // high ledge route — stepped from mid ground
+  {x:46,y:13,w:3,h:1},
+  {x:49,y:11,w:3,h:1},
+  {x:53,y:9,w:3,h:1},
+  {x:57,y:7,w:4,h:1},
+  // floating platforms over pit (Δ2 from ground / each other)
+  {x:64,y:13,w:3,h:1},
+  {x:69,y:11,w:3,h:1},
+  {x:74,y:13,w:4,h:1},
+  // after pit
+  {x:80,y:15,w:16,h:3},
+  {x:84,y:13,w:3,h:1},
+  {x:88,y:11,w:3,h:1},
+  {x:92,y:13,w:4,h:1},
+  // final stretch
+  {x:99,y:15,w:8,h:3},
+  {x:109,y:13,w:5,h:1},
+  {x:116,y:15,w:14,h:3},
+  {x:120,y:13,w:3,h:1},
+];
+
+// Checkpoints (world px)
+const checkpoints = [
+  { x: 2*TILE, y: 14*TILE },
+  { x: 42*TILE, y: 14*TILE },
+  { x: 82*TILE, y: 14*TILE },
+];
+
+// Coins (~18)
+function makeCoins() {
+  // Placed just above reachable platform tops (grabbed with a normal jump)
+  const spots = [
+    [4,13],[8,13],[12,13],
+    [22,11],[28,9],[35,11],
+    [43,13],[47,11],[50,9],[54,7],[58,5],
+    [57,13],[66,11],[71,9],[76,11],
+    [85,11],[89,9],[93,11],
+    [102,13],[111,11],[121,11],[124,13],
+  ];
+  return spots.map(([tx,ty]) => ({
+    x: tx*TILE + 8, y: ty*TILE + 4, w: 16, h: 20,
+    collected: false, bob: Math.random()*Math.PI*2
+  }));
+}
+
+// Enemies: type 'walker' | 'hopper'
+function makeEnemies() {
+  return [
+    { type:"walker", x:10*TILE, y:14*TILE, w:28, h:28, vx:60, dir:1, minX:2*TILE, maxX:16*TILE, alive:true },
+    { type:"walker", x:44*TILE, y:14*TILE, w:28, h:28, vx:70, dir:-1, minX:40*TILE, maxX:50*TILE, alive:true },
+    { type:"hopper", x:30*TILE, y:11*TILE, w:26, h:26, vx:40, dir:1, vy:0, groundY:13*TILE-26, minX:27*TILE, maxX:36*TILE, alive:true, hopT:0 },
+    { type:"walker", x:86*TILE, y:14*TILE, w:28, h:28, vx:80, dir:1, minX:80*TILE, maxX:94*TILE, alive:true },
+    { type:"hopper", x:71*TILE, y:11*TILE-26, w:26, h:26, vx:30, dir:-1, vy:0, groundY:11*TILE-26, minX:69*TILE, maxX:72*TILE, alive:true, hopT:0.5 },
+    { type:"walker", x:110*TILE, y:13*TILE-28, w:28, h:28, vx:55, dir:1, minX:109*TILE, maxX:113*TILE-4, alive:true },
+    { type:"hopper", x:104*TILE, y:15*TILE-26, w:26, h:26, vx:35, dir:1, vy:0, groundY:15*TILE-26, minX:99*TILE, maxX:106*TILE, alive:true, hopT:1.2 },
+  ];
+}
+
+const goal = { x: 126*TILE, y: 12*TILE, w: 20, h: 96 };
+
+// ---------- Game state ----------
+const GRAV = 2200;
+const MOVE_ACC = 2400;
+const MOVE_MAX = 260;
+const FRICTION = 1800;
+const JUMP_V = -620;
+const JUMP_CUT = 0.45;
+// Derived (full held jump): maxJumpH = v^2/(2g) ≈ 87.4px (~2.73 tiles).
+// Level design uses ≤2 tile rises (~64px ≈ 73% of max) for comfort.
+const COYOTE = 0.1;
+const JUMP_BUF = 0.12;
+
+let state = "title"; // title | play | collection | slot | dead | win
+let collection = loadCollection();
+let hearts = 3;
+let invuln = 0;
+let checkpointIdx = 0;
+let cameraX = 0;
+let coins = [];
+let enemies = [];
+let particles = [];
+let callouts = []; // floating text
+let slot = null; // slot machine overlay (gameplay keeps running)
+let slotQueue = 0; // pending rolls earned while a roll is already playing
+let loseAnim = null;
+let winStats = null
+
+const player = {
+  x: 64, y: 14*TILE - 40, w: 24, h: 36,
+  vx: 0, vy: 0, onGround: false,
+  facing: 1, coyote: 0, jumpBuf: 0,
+  anim: 0, flash: 0,
+};
+
+function resetLevel(full) {
+  coins = makeCoins();
+  enemies = makeEnemies();
+  particles = [];
+  callouts = [];
+  slot = null;
+  slotQueue = 0;
+  loseAnim = null;
+  hearts = 3;
+  invuln = 0;
+  if (full) {
+    checkpointIdx = 0;
+    collection = loadCollection();
+  }
+  const cp = checkpoints[checkpointIdx];
+  player.x = cp.x;
+  player.y = cp.y - player.h;
+  player.vx = 0; player.vy = 0;
+  player.onGround = false;
+  player.coyote = 0; player.jumpBuf = 0;
+  cameraX = Math.max(0, player.x - W*0.35);
+}
+
+function solidAt(px, py, pw, ph) {
+  // AABB vs platform rects
+  for (const p of platforms) {
+    const x = p.x*TILE, y = p.y*TILE, w = p.w*TILE, h = p.h*TILE;
+    if (px < x+w && px+pw > x && py < y+h && py+ph > y) return {x,y,w,h};
+  }
+  return null;
+}
+
+function resolvePlayer(dt) {
+  // horizontal
+  player.x += player.vx * dt;
+  let hit = solidAt(player.x, player.y, player.w, player.h);
+  if (hit) {
+    if (player.vx > 0) player.x = hit.x - player.w;
+    else if (player.vx < 0) player.x = hit.x + hit.w;
+    player.vx = 0;
+  }
+  // vertical
+  player.y += player.vy * dt;
+  player.onGround = false;
+  hit = solidAt(player.x, player.y, player.w, player.h);
+  if (hit) {
+    if (player.vy > 0) {
+      player.y = hit.y - player.h;
+      player.vy = 0;
+      player.onGround = true;
+    } else if (player.vy < 0) {
+      player.y = hit.y + hit.h;
+      player.vy = 0;
+    }
+  }
+  // world bounds
+  if (player.x < 0) { player.x = 0; player.vx = 0; }
+  if (player.x + player.w > LEVEL_W * TILE) { player.x = LEVEL_W*TILE - player.w; player.vx = 0; }
+}
+
+function hurtPlayer(fromX) {
+  if (invuln > 0 || state !== "play") return;
+  hearts--;
+  invuln = 1.4;
+  player.flash = 1.4;
+  player.vx = (player.x + player.w/2 < fromX ? -1 : 1) * -220;
+  player.vy = -340;
+  player.onGround = false;
+  sfx.hit();
+  spawnParticles(player.x + player.w/2, player.y + player.h/2, "#ff4466", 10);
+  if (hearts <= 0) {
+    onHeartsZero();
+  }
+}
+
+function onHeartsZero() {
+  if (state === "dead") return; // single clean event — ignore re-entry
+  // Lose one random *already owned* card (pending unrevealed roll is not owned yet).
+  // Active roll + queue keep running on top of the death overlay; rewards still grant.
+  const owned = Object.keys(collection).filter(k => collection[k] > 0);
+  let lostName = null;
+  if (owned.length) {
+    const id = owned[Math.floor(Math.random() * owned.length)];
+    collection[id]--;
+    if (collection[id] <= 0) delete collection[id];
+    saveCollection(collection);
+    const ch = CHAR_DEFS.find(c => c.id === id);
+    lostName = ch ? ch.name : id;
+    sfx.lose();
+  }
+  loseAnim = { t: 0, name: lostName, dur: 2.2 };
+  state = "dead";
+}
+
+function spawnParticles(x, y, color, n) {
+  for (let i = 0; i < n; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random()-0.5)*220,
+      vy: (Math.random()-0.8)*260,
+      life: 0.4 + Math.random()*0.5,
+      color, size: 2 + Math.random()*3
+    });
+  }
+}
+
+function addCallout(text, color) {
+  callouts.push({ text, color, t: 0, dur: 0.4 }); // half again (was 0.8)
+}
+
+function beginSlotRoll() {
+  // Precompute result and plant it at targetIndex BEFORE spinning.
+  // Offset eases exactly to that index — no end snap/swap.
+  const result = rollCharacter();
+  const targetIndex = 24;
+  const strip = [];
+  for (let i = 0; i < targetIndex; i++) {
+    let pick;
+    do {
+      pick = CHAR_DEFS[Math.floor(Math.random() * CHAR_DEFS.length)];
+    } while (i > targetIndex - 4 && pick.id === result.id); // keep approach cards visually distinct
+    strip.push(pick);
+  }
+  strip.push(result);
+  for (let i = 0; i < 4; i++) {
+    strip.push(CHAR_DEFS[Math.floor(Math.random() * CHAR_DEFS.length)]);
+  }
+  slot = {
+    strip,
+    result,
+    targetIndex,
+    startOffset: 0,
+    offset: 0,
+    elapsed: 0,
+    duration: 1.2,
+    done: false,
+    revealT: 0,
+  };
+  sfx.coin();
+}
+
+// Coin pickup: start a roll, or queue if one is already playing. Gameplay never pauses.
+function onCoinCollected() {
+  if (slot) {
+    slotQueue++;
+    sfx.coin();
+  } else {
+    beginSlotRoll();
+  }
+}
+
+function finishSlot() {
+  if (!slot) return;
+  const id = slot.result.id;
+  const prev = collection[id] || 0;
+  collection[id] = prev + 1;
+  saveCollection(collection);
+  if (prev === 0) {
+    addCallout("NEW! " + slot.result.name, "#ffe66d");
+    sfx.new();
+  } else {
+    addCallout("DUPE x" + (prev + 1) + " — " + slot.result.name, "#9ad0ff");
+  }
+  slot = null;
+  // Chain queued rolls immediately (even over death/win overlays — player earned them)
+  if (slotQueue > 0) {
+    slotQueue--;
+    beginSlotRoll();
+  }
+}
+
+// ---------- Update ----------
+function updatePlay(dt) {
+  // movement
+  let move = 0;
+  if (keys["arrowleft"] || keys["a"]) move -= 1;
+  if (keys["arrowright"] || keys["d"]) move += 1;
+  if (move !== 0) {
+    player.vx += move * MOVE_ACC * dt;
+    player.facing = move;
+  } else {
+    const fr = FRICTION * dt;
+    if (Math.abs(player.vx) <= fr) player.vx = 0;
+    else player.vx -= Math.sign(player.vx) * fr;
+  }
+  player.vx = Math.max(-MOVE_MAX, Math.min(MOVE_MAX, player.vx));
+
+  // jump buffer / coyote
+  if (justPressed[" "] || justPressed["arrowup"] || justPressed["w"]) {
+    player.jumpBuf = JUMP_BUF;
+  }
+  if (player.onGround) player.coyote = COYOTE;
+  else player.coyote -= dt;
+  player.jumpBuf -= dt;
+
+  if (player.jumpBuf > 0 && player.coyote > 0) {
+    player.vy = JUMP_V;
+    player.onGround = false;
+    player.coyote = 0;
+    player.jumpBuf = 0;
+    sfx.jump();
+  }
+  // variable jump height
+  const jumpHeld = keys[" "] || keys["arrowup"] || keys["w"];
+  if (!jumpHeld && player.vy < 0) {
+    player.vy *= JUMP_CUT;
+  }
+
+  player.vy += GRAV * dt;
+  if (player.vy > 900) player.vy = 900;
+  resolvePlayer(dt);
+
+  // Pit / cliff: one deliberate full wipe — all hearts gone, lose one card, then checkpoint respawn.
+  // Guarded by state !== "play" inside onHeartsZero path (state flips to "dead" immediately) so no multi-trigger.
+  if (player.y > (LEVEL_H + 2) * TILE) {
+    hearts = 0;
+    player.vx = 0;
+    player.vy = 0;
+    // Park at checkpoint immediately so we are not still "in the pit" next frame
+    const cp = checkpoints[checkpointIdx];
+    player.x = cp.x;
+    player.y = cp.y - player.h;
+    sfx.hit();
+    onHeartsZero();
+    return;
+  }
+
+  // checkpoints
+  for (let i = checkpointIdx + 1; i < checkpoints.length; i++) {
+    if (player.x + player.w/2 >= checkpoints[i].x) checkpointIdx = i;
+  }
+
+  // coins (bob + collect; multiple hits while rolling are queued)
+  for (const c of coins) {
+    if (c.collected) continue;
+    c.bob += dt * 3;
+    if (aabb(player, c)) {
+      c.collected = true;
+      spawnParticles(c.x + 8, c.y + 10, "#ffd24a", 8);
+      onCoinCollected();
+    }
+  }
+
+  // enemies
+  for (const e of enemies) {
+    if (!e.alive) continue;
+    if (e.type === "walker") {
+      e.x += e.vx * e.dir * dt;
+      if (e.x < e.minX) { e.x = e.minX; e.dir = 1; }
+      if (e.x + e.w > e.maxX) { e.x = e.maxX - e.w; e.dir = -1; }
+    } else if (e.type === "hopper") {
+      e.hopT += dt;
+      e.x += e.vx * e.dir * dt;
+      if (e.x < e.minX) { e.x = e.minX; e.dir = 1; }
+      if (e.x + e.w > e.maxX) { e.x = e.maxX - e.w; e.dir = -1; }
+      e.vy += GRAV * dt * 0.85;
+      e.y += e.vy * dt;
+      if (e.y >= e.groundY) {
+        e.y = e.groundY;
+        e.vy = 0;
+        if (e.hopT > 1.1) { e.vy = -520; e.hopT = 0; }
+      }
+    }
+
+    if (!aabb(player, e)) continue;
+    // stomp?
+    const stomping = player.vy > 40 && (player.y + player.h) < (e.y + e.h * 0.55);
+    if (stomping) {
+      e.alive = false;
+      player.vy = JUMP_V * 0.65;
+      sfx.stomp();
+      spawnParticles(e.x + e.w/2, e.y + e.h/2, e.type === "hopper" ? "#7dff9a" : "#ff8a5b", 12);
+    } else {
+      hurtPlayer(e.x + e.w/2);
+    }
+  }
+
+  // goal
+  if (aabb(player, goal)) {
+    state = "win";
+    winStats = {
+      unique: Object.keys(collection).length,
+      total: Object.values(collection).reduce((s,n)=>s+n,0),
+      coins: coins.filter(c => c.collected).length,
+      coinsMax: coins.length,
+    };
+    sfx.win();
+  }
+
+  if (invuln > 0) invuln -= dt;
+  if (player.flash > 0) player.flash -= dt;
+  player.anim += dt * (Math.abs(player.vx) > 20 ? 10 : 4);
+
+  // camera
+  const target = player.x - W * 0.38;
+  cameraX += (target - cameraX) * Math.min(1, 6 * dt);
+  cameraX = Math.max(0, Math.min(cameraX, LEVEL_W * TILE - W));
+}
+
+function updateSlot(dt) {
+  if (!slot) return;
+  if (!slot.done) {
+    slot.elapsed += dt;
+    const t = Math.min(1, slot.elapsed / slot.duration);
+    // Ease-out cubic on POSITION so we land exactly on targetIndex (the pre-planted result)
+    const ease = 1 - Math.pow(1 - t, 3);
+    const prev = Math.floor(slot.offset + 1e-9);
+    slot.offset = slot.startOffset + (slot.targetIndex - slot.startOffset) * ease;
+    if (Math.floor(slot.offset + 1e-9) !== prev) sfx.tick();
+    if (t >= 1) {
+      slot.offset = slot.targetIndex;
+      slot.done = true;
+      slot.revealT = 0;
+    }
+  } else {
+    slot.revealT += dt;
+    if (slot.revealT > 0.275) finishSlot(); // half of previous 0.55s reveal hold
+  }
+}
+
+function updateDead(dt) {
+  if (!loseAnim) { state = "play"; resetAfterDeath(); return; }
+  loseAnim.t += dt;
+  if (loseAnim.t >= loseAnim.dur) {
+    loseAnim = null;
+    resetAfterDeath();
+    state = "play";
+  }
+}
+
+function resetAfterDeath() {
+  hearts = 3;
+  invuln = 1.5;
+  const cp = checkpoints[checkpointIdx];
+  player.x = cp.x; player.y = cp.y - player.h;
+  player.vx = 0; player.vy = 0;
+  // Respawn all level collectible cards/coins after any death (enemies or pit)
+  coins = makeCoins();
+  // Enemies stay defeated for nicer flow
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= dt; p.x += p.vx*dt; p.y += p.vy*dt; p.vy += 600*dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+  for (let i = callouts.length - 1; i >= 0; i--) {
+    callouts[i].t += dt;
+    if (callouts[i].t >= callouts[i].dur) callouts.splice(i, 1);
+  }
+}
+
+function aabb(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+// ---------- Draw ----------
+function drawBackground() {
+  // sky gradient
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, "#1b0f2e");
+  g.addColorStop(0.5, "#3a1a4a");
+  g.addColorStop(1, "#6b2d5c");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+
+  // parallax hills
+  ctx.fillStyle = "#2a1538";
+  for (let i = 0; i < 8; i++) {
+    const hx = ((i * 280) - cameraX * 0.2) % (W + 300) - 80;
+    ctx.beginPath();
+    ctx.ellipse(hx + 120, H - 40, 160, 70, 0, 0, Math.PI*2);
+    ctx.fill();
+  }
+  // stars
+  ctx.fillStyle = "rgba(255,255,255,0.5)";
+  for (let i = 0; i < 40; i++) {
+    const sx = ((i * 97) * 13 - cameraX * 0.05) % W;
+    const sy = (i * 37) % (H * 0.55);
+    ctx.fillRect(sx, sy, 2, 2);
+  }
+}
+
+function drawWorld() {
+  ctx.save();
+  ctx.translate(-Math.floor(cameraX), 0);
+
+  // platforms
+  for (const p of platforms) {
+    const x = p.x*TILE, y = p.y*TILE, w = p.w*TILE, h = p.h*TILE;
+    // dirt body
+    ctx.fillStyle = "#5c3a28";
+    ctx.fillRect(x, y, w, h);
+    // grass top
+    ctx.fillStyle = "#4ec96a";
+    ctx.fillRect(x, y, w, 8);
+    // pixel edge
+    ctx.fillStyle = "#3a8f4c";
+    for (let i = 0; i < w; i += 8) ctx.fillRect(x + i, y + 8, 6, 3);
+    // bricks hint on tall
+    if (h > TILE) {
+      ctx.fillStyle = "rgba(0,0,0,0.15)";
+      for (let ty = y + TILE; ty < y + h; ty += TILE) {
+        ctx.fillRect(x, ty, w, 2);
+        for (let tx = x; tx < x + w; tx += TILE) ctx.fillRect(tx, ty, 2, TILE);
+      }
+    }
+  }
+
+  // checkpoints flags
+  for (let i = 0; i < checkpoints.length; i++) {
+    const c = checkpoints[i];
+    const active = i <= checkpointIdx;
+    ctx.fillStyle = "#ddd";
+    ctx.fillRect(c.x, c.y - 48, 4, 48);
+    ctx.fillStyle = active ? "#ff5a9a" : "#888";
+    ctx.beginPath();
+    ctx.moveTo(c.x + 4, c.y - 48);
+    ctx.lineTo(c.x + 28, c.y - 36);
+    ctx.lineTo(c.x + 4, c.y - 24);
+    ctx.fill();
+  }
+
+  // coins (card-shaped)
+  for (const c of coins) {
+    if (c.collected) continue;
+    const by = c.y + Math.sin(c.bob) * 4;
+    // mini card
+    const g = ctx.createLinearGradient(c.x, by, c.x, by + c.h);
+    g.addColorStop(0, "#ffd24a");
+    g.addColorStop(1, "#ff7ab8");
+    roundRect(c.x, by, c.w, c.h, 3);
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.strokeStyle = "#fff8";
+    ctx.lineWidth = 1;
+    roundRect(c.x, by, c.w, c.h, 3);
+    ctx.stroke();
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 10px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("★", c.x + c.w/2, by + c.h/2 + 3);
+  }
+
+  // enemies
+  for (const e of enemies) {
+    if (!e.alive) continue;
+    if (e.type === "walker") {
+      ctx.fillStyle = "#e85d4c";
+      roundRect(e.x, e.y, e.w, e.h, 4);
+      ctx.fill();
+      // eyes
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(e.x + 6 + (e.dir>0?8:0), e.y + 8, 6, 6);
+      ctx.fillRect(e.x + 16 + (e.dir>0?8:0), e.y + 8, 6, 6);
+      ctx.fillStyle = "#111";
+      ctx.fillRect(e.x + 8 + (e.dir>0?8:0), e.y + 10, 3, 3);
+      ctx.fillRect(e.x + 18 + (e.dir>0?8:0), e.y + 10, 3, 3);
+      // feet
+      ctx.fillStyle = "#a03028";
+      ctx.fillRect(e.x + 2, e.y + e.h - 4, 8, 4);
+      ctx.fillRect(e.x + e.w - 10, e.y + e.h - 4, 8, 4);
+    } else {
+      // hopper — green blob with spring
+      ctx.fillStyle = "#5dcf6a";
+      ctx.beginPath();
+      ctx.ellipse(e.x + e.w/2, e.y + e.h/2, e.w/2, e.h/2 * (e.vy < -50 ? 1.15 : 0.9), 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.arc(e.x + 8, e.y + 10, 4, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(e.x + 18, e.y + 10, 4, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = "#111";
+      ctx.fillRect(e.x + 8, e.y + 10, 3, 3);
+      ctx.fillRect(e.x + 18, e.y + 10, 3, 3);
+    }
+  }
+
+  // goal flag
+  ctx.fillStyle = "#eee";
+  ctx.fillRect(goal.x, goal.y, 5, goal.h);
+  ctx.fillStyle = "#ffd24a";
+  ctx.beginPath();
+  ctx.moveTo(goal.x + 5, goal.y);
+  ctx.lineTo(goal.x + 40, goal.y + 16);
+  ctx.lineTo(goal.x + 5, goal.y + 32);
+  ctx.fill();
+  ctx.fillStyle = "#ff5a9a";
+  ctx.beginPath();
+  ctx.arc(goal.x + 2, goal.y, 6, 0, Math.PI*2);
+  ctx.fill();
+
+  // player
+  if (player.flash <= 0 || Math.floor(player.flash * 12) % 2 === 0) {
+    const px = player.x, py = player.y;
+    // body
+    ctx.fillStyle = "#6ec8ff";
+    roundRect(px, py + 8, player.w, player.h - 8, 4);
+    ctx.fill();
+    // head
+    ctx.fillStyle = "#ffdbb0";
+    ctx.fillRect(px + 4, py, 16, 14);
+    // hair
+    ctx.fillStyle = "#ff5a9a";
+    ctx.fillRect(px + 3, py - 2, 18, 6);
+    // eye
+    ctx.fillStyle = "#222";
+    const ex = player.facing >= 0 ? px + 14 : px + 6;
+    ctx.fillRect(ex, py + 5, 3, 3);
+    // legs
+    const leg = Math.sin(player.anim) * (player.onGround && Math.abs(player.vx)>30 ? 4 : 0);
+    ctx.fillStyle = "#3a6a9a";
+    ctx.fillRect(px + 4, py + player.h - 8, 6, 8 + leg);
+    ctx.fillRect(px + 14, py + player.h - 8, 6, 8 - leg);
+  }
+
+  // particles in world space
+  for (const p of particles) {
+    ctx.globalAlpha = Math.max(0, p.life * 2);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x, p.y, p.size, p.size);
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.restore();
+}
+
+function drawHUD() {
+  // hearts
+  for (let i = 0; i < 3; i++) {
+    const hx = 16 + i * 28, hy = 14;
+    ctx.fillStyle = i < hearts ? "#ff4d6d" : "#44222a";
+    ctx.beginPath();
+    ctx.moveTo(hx, hy + 6);
+    ctx.bezierCurveTo(hx, hy, hx + 12, hy, hx + 12, hy + 6);
+    ctx.bezierCurveTo(hx + 12, hy + 14, hx, hy + 18, hx, hy + 18);
+    ctx.bezierCurveTo(hx, hy + 18, hx - 12, hy + 14, hx - 12, hy + 6);
+    ctx.bezierCurveTo(hx - 12, hy, hx, hy, hx, hy + 6);
+    ctx.fill();
+  }
+
+  // collection count
+  const unique = Object.keys(collection).length;
+  const total = Object.values(collection).reduce((s,n)=>s+n,0);
+  ctx.fillStyle = "rgba(0,0,0,0.4)";
+  roundRect(W - 170, 8, 158, 36, 8);
+  ctx.fill();
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 13px sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText("Cards " + unique + "/" + CHAR_DEFS.length, W - 158, 24);
+  ctx.font = "11px sans-serif";
+  ctx.fillStyle = "#ffb0d0";
+  ctx.fillText("Total pulls: " + total + "  [C]", W - 158, 38);
+
+  // studio tag
+  ctx.fillStyle = "rgba(255,255,255,0.25)";
+  ctx.font = "10px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("Big Salty Gaming Studio", W/2, H - 8);
+
+  // callouts
+  for (const c of callouts) {
+    const a = c.t < 0.2 ? c.t/0.2 : (c.t > c.dur - 0.4 ? (c.dur - c.t)/0.4 : 1);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    roundRect(W/2 - 140, 56, 280, 36, 8);
+    ctx.fill();
+    ctx.fillStyle = c.color;
+    ctx.font = "bold 18px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(c.text, W/2, 80);
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawSlot() {
+  // Overlay only — no screen dimming; world keeps rendering underneath
+  const panelY = 48;
+  const panelH = 150;
+  ctx.fillStyle = "rgba(20,10,30,0.92)";
+  roundRect(40, panelY, W - 80, panelH, 14);
+  ctx.fill();
+  ctx.strokeStyle = "#ff5a9a";
+  ctx.lineWidth = 3;
+  roundRect(40, panelY, W - 80, panelH, 14);
+  ctx.stroke();
+
+  ctx.fillStyle = "#ffb0d0";
+  ctx.font = "bold 16px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(slot.done ? "★ YOU GOT ★" : "✦ ROLLING… ✦", W/2, panelY + 24);
+
+  if (slotQueue > 0) {
+    ctx.fillStyle = "#ffe66d";
+    ctx.font = "bold 12px sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText("Queue +" + slotQueue, W - 56, panelY + 24);
+  }
+
+  // card window
+  const cw = 72, ch = 96;
+  const gap = 14;
+  const centerX = W/2;
+  const cy = panelY + 40;
+  const viewW = cw * 5 + gap * 4;
+  const vx = centerX - viewW/2;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(vx - 4, cy - 4, viewW + 8, ch + 8);
+  ctx.clip();
+
+  const base = slot.offset;
+  // draw visible cards around current offset
+  for (let i = -3; i <= 3; i++) {
+    const idx = Math.floor(base) + i;
+    if (idx < 0 || idx >= slot.strip.length) continue;
+    const frac = base - Math.floor(base);
+    const cx = centerX + (i - frac) * (cw + gap) - cw/2;
+    const char = slot.strip[idx];
+    const isCenter = i === 0 && Math.abs(frac) < 0.5;
+    drawCard(char, cx, cy, cw, ch, { glow: slot.done && idx === slot.targetIndex ? 1 : 0 });
+  }
+  ctx.restore();
+
+  // center highlight frame
+  ctx.strokeStyle = "#ffe66d";
+  ctx.lineWidth = 3;
+  roundRect(centerX - cw/2 - 4, cy - 4, cw + 8, ch + 8, 10);
+  ctx.stroke();
+
+  if (slot.done) {
+    const rar = rarityOf(slot.result.id);
+    ctx.fillStyle = rar.color;
+    ctx.font = "bold 14px sans-serif";
+    ctx.fillText(slot.result.name + " — " + rar.label, W/2, panelY + panelH - 12);
+  }
+}
+
+function drawCollection() {
+  ctx.fillStyle = "rgba(12,8,20,0.94)";
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = "#ff8ec8";
+  ctx.font = "bold 28px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("Collection Gallery", W/2, 42);
+  ctx.font = "13px sans-serif";
+  ctx.fillStyle = "#aaa";
+  ctx.fillText("Press C or Esc to close", W/2, 64);
+
+  const cols = 6, rows = 2;
+  const cw = 110, ch = 150, gapX = 24, gapY = 20;
+  const gridW = cols * cw + (cols - 1) * gapX;
+  const startX = (W - gridW) / 2;
+  const startY = 90;
+
+  for (let i = 0; i < CHAR_DEFS.length; i++) {
+    const col = i % cols, row = Math.floor(i / cols);
+    const x = startX + col * (cw + gapX);
+    const y = startY + row * (ch + gapY);
+    const char = CHAR_DEFS[i];
+    const count = collection[char.id] || 0;
+    drawCard(char, x, y, cw, ch, {
+      locked: count === 0,
+      count: count > 0 ? count : null,
+    });
+  }
+
+  const unique = Object.keys(collection).length;
+  ctx.fillStyle = "#fff";
+  ctx.font = "14px sans-serif";
+  ctx.fillText("Owned " + unique + " / " + CHAR_DEFS.length + " unique", W/2, H - 28);
+}
+
+function drawTitle() {
+  drawBackground();
+  // decorative cards
+  for (let i = 0; i < 5; i++) {
+    const ch = CHAR_DEFS[i * 2];
+    drawCard(ch, 60 + i * 180, 160 + Math.sin(performance.now()/500 + i)*10, 90, 120, {});
+  }
+  ctx.fillStyle = "rgba(10,5,20,0.55)";
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = "#ff5a9a";
+  ctx.font = "bold 48px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("Hot Babe Collector", W/2, 200);
+  ctx.fillStyle = "#ffb0d0";
+  ctx.font = "18px sans-serif";
+  ctx.fillText("Big Salty Gaming Studio", W/2, 236);
+
+  ctx.fillStyle = "#fff";
+  ctx.font = "16px sans-serif";
+  ctx.fillText("Collect character cards • Stomp foes • Reach the flag", W/2, 300);
+  ctx.fillStyle = "#ffe66d";
+  ctx.font = "bold 20px sans-serif";
+  const blink = Math.sin(performance.now()/300) > 0;
+  if (blink) ctx.fillText("Press Enter / Space to Start", W/2, 360);
+
+  ctx.fillStyle = "#999";
+  ctx.font = "12px sans-serif";
+  ctx.fillText("←→ / A D move  •  Space / W / ↑ jump  •  C collection", W/2, 420);
+}
+
+function drawDead() {
+  ctx.fillStyle = "rgba(40,5,15,0.7)";
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#ff6b8a";
+  ctx.font = "bold 36px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("Ouch!", W/2, H/2 - 40);
+  if (loseAnim && loseAnim.name) {
+    ctx.fillStyle = "#ffe66d";
+    ctx.font = "bold 24px sans-serif";
+    ctx.fillText("LOST: " + loseAnim.name, W/2, H/2 + 10);
+    ctx.fillStyle = "#ccc";
+    ctx.font = "14px sans-serif";
+    ctx.fillText("A random card was taken from your collection", W/2, H/2 + 40);
+  } else {
+    ctx.fillStyle = "#ccc";
+    ctx.font = "16px sans-serif";
+    ctx.fillText("No cards to lose… this time.", W/2, H/2 + 10);
+  }
+  ctx.fillStyle = "#aaa";
+  ctx.font = "13px sans-serif";
+  ctx.fillText("Respawning at checkpoint…", W/2, H/2 + 80);
+}
+
+function drawWin() {
+  ctx.fillStyle = "rgba(10,5,30,0.85)";
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#ffe66d";
+  ctx.font = "bold 42px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("Level Complete!", W/2, 160);
+  ctx.fillStyle = "#ff8ec8";
+  ctx.font = "18px sans-serif";
+  ctx.fillText("Big Salty Gaming Studio thanks you", W/2, 200);
+
+  if (winStats) {
+    ctx.fillStyle = "#fff";
+    ctx.font = "16px sans-serif";
+    ctx.fillText("Coins collected: " + winStats.coins + " / " + winStats.coinsMax, W/2, 260);
+    ctx.fillText("Unique cards owned: " + winStats.unique + " / " + CHAR_DEFS.length, W/2, 290);
+    ctx.fillText("Total pulls: " + winStats.total, W/2, 320);
+  }
+
+  ctx.fillStyle = "#ffe66d";
+  ctx.font = "bold 18px sans-serif";
+  ctx.fillText("Press R or Enter to Restart", W/2, 400);
+  ctx.fillStyle = "#aaa";
+  ctx.font = "14px sans-serif";
+  ctx.fillText("Press C to view collection", W/2, 430);
+}
+
+function frame(dt) {
+  if (state === "title") {
+    drawTitle();
+    if (justPressed[" "] || justPressed["enter"]) {
+      resetLevel(true);
+      state = "play";
+      ensureAudio();
+    }
+    return;
+  }
+
+  if (state === "collection") {
+    if (slot) updateSlot(dt);
+    updateParticles(dt);
+    drawBackground();
+    drawWorld();
+    drawHUD();
+    if (slot) drawSlot();
+    drawCollection();
+    if (justPressed["c"] || justPressed["escape"]) state = "play";
+    return;
+  }
+
+  if (state === "win") {
+    if (slot) updateSlot(dt);
+    updateParticles(dt);
+    drawBackground();
+    drawWorld();
+    drawHUD();
+    if (slot) drawSlot();
+    drawWin();
+    if (justPressed["r"] || justPressed["enter"]) {
+      resetLevel(true);
+      state = "play";
+    }
+    if (justPressed["c"]) state = "collection";
+    return;
+  }
+
+  // update — gameplay + slot overlay run together
+  updateParticles(dt);
+  if (slot) updateSlot(dt);
+  if (state === "play") {
+    updatePlay(dt);
+    if (justPressed["c"]) state = "collection";
+  } else if (state === "dead") {
+    updateDead(dt);
+  }
+
+  // draw
+  drawBackground();
+  drawWorld();
+  drawHUD();
+  if (state === "dead") drawDead();
+  // Slot overlay stays on top (including over death) so the roll remains visible
+  if (slot) drawSlot();
+}
+
+// ---------- Main loop ----------
+let last = performance.now();
+function loop(now) {
+  let dt = (now - last) / 1000;
+  last = now;
+  if (dt > 0.05) dt = 0.05;
+  frame(dt);
+  // clear justPressed at end of frame
+  for (const k in justPressed) delete justPressed[k];
+  requestAnimationFrame(loop);
+}
+
+// Fit canvas
+function fit() {
+  const r = Math.min(window.innerWidth / W, window.innerHeight / H);
+  canvas.style.width = Math.floor(W * r) + "px";
+  canvas.style.height = Math.floor(H * r) + "px";
+}
+window.addEventListener("resize", fit);
+fit();
+
+resetLevel(true);
+state = "title";
+requestAnimationFrame(loop);
+
+// Expose for headless testing
+window.__HBC = {
+  getState: () => state,
+  setState: (s) => { state = s; },
+  getPlayer: () => player,
+  getCoins: () => coins,
+  getHearts: () => hearts,
+  getCollection: () => collection,
+  getSlot: () => slot,
+  getSlotQueue: () => slotQueue,
+  getCenteredCard: () => {
+    if (!slot) return null;
+    const idx = Math.round(slot.offset);
+    return slot.strip[idx] || null;
+  },
+  startPlay: () => { resetLevel(true); state = "play"; },
+  forceCoin: () => {
+    const c = coins.find(x => !x.collected);
+    if (c) { player.x = c.x - 4; player.y = c.y - player.h + 4; }
+  },
+  triggerCoin: () => {
+    const c = coins.find(x => !x.collected);
+    if (!c) return false;
+    c.collected = true;
+    onCoinCollected();
+    return true;
+  },
+  openCollection: () => { state = "collection"; },
+};
+</script>
+</body>
+</html>
