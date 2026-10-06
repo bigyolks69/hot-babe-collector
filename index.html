@@ -1225,6 +1225,8 @@ let enemies = [];
 let particles = [];
 let callouts = []; // floating text
 let slot = null; // slot machine overlay (gameplay keeps running)
+const SLOT_PANEL_Y = 48;
+const SLOT_PANEL_H = Math.round(150 * 0.7); // 105
 let slotQueue = 0; // pending rolls earned while a roll is already playing
 let loseAnim = null;
 let deathCry = null; // { t, dur, lostName, lostId, lostPrevCount } — in-world cry before Ouch
@@ -1530,8 +1532,26 @@ function spawnParticles(x, y, color, n) {
   }
 }
 
+// Post-roll callout ("NEW! <name> · Common", "★ RARE DUPE x2 — <name>", …)
+// Pop in, hold at full opacity, then fade smoothly to 0.
+const CALLOUT_IN = 0.2;    // pop-in (unchanged)
+const CALLOUT_HOLD = 1.4;  // full opacity: old ~0.4s visible time + 1.0s
+const CALLOUT_OUT = 0.45;  // smooth fade-out
+const CALLOUT_H = 36, CALLOUT_GAP = 6;
+// Callouts sit where the roll panel was; if a (queued) roll is on screen they
+// slide just below the panel so the next roll never hides them.
+function calloutBaseY() {
+  return slot ? SLOT_PANEL_Y + SLOT_PANEL_H + 8 : 56;
+}
 function addCallout(text, color) {
-  callouts.push({ text, color, t: 0, dur: 0.4 }); // half again (was 0.8)
+  callouts.push({ text, color, t: 0, dur: CALLOUT_IN + CALLOUT_HOLD + CALLOUT_OUT, y: null });
+}
+function calloutAlpha(c) {
+  if (c.t < CALLOUT_IN) return c.t / CALLOUT_IN;
+  const fadeStart = CALLOUT_IN + CALLOUT_HOLD;
+  if (c.t <= fadeStart) return 1;
+  const u = Math.min(1, (c.t - fadeStart) / CALLOUT_OUT);
+  return 1 - u * u * (3 - 2 * u); // smoothstep 1 → 0
 }
 
 function beginSlotRoll() {
@@ -1836,6 +1856,13 @@ function updateParticles(dt) {
     callouts[i].t += dt;
     if (callouts[i].t >= callouts[i].dur) callouts.splice(i, 1);
   }
+  // Layout: newest on top, older ones stacked beneath; ease toward target slot
+  const baseY = calloutBaseY();
+  for (let i = callouts.length - 1, k = 0; i >= 0; i--, k++) {
+    const c = callouts[i];
+    const ty = baseY + k * (CALLOUT_H + CALLOUT_GAP);
+    c.y = c.y == null ? ty : c.y + (ty - c.y) * Math.min(1, 12 * dt);
+  }
 }
 
 function aabb(a, b) {
@@ -2118,15 +2145,15 @@ function drawHUD() {
 
   // callouts
   for (const c of callouts) {
-    const a = c.t < 0.2 ? c.t/0.2 : (c.t > c.dur - 0.4 ? (c.dur - c.t)/0.4 : 1);
-    ctx.globalAlpha = a;
+    const y = c.y == null ? calloutBaseY() : c.y;
+    ctx.globalAlpha = calloutAlpha(c);
     ctx.fillStyle = "rgba(0,0,0,0.55)";
-    roundRect(W/2 - 140, 56, 280, 36, 8);
+    roundRect(W/2 - 140, y, 280, CALLOUT_H, 8);
     ctx.fill();
     ctx.fillStyle = c.color;
     ctx.font = "bold 18px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(c.text, W/2, 80);
+    ctx.fillText(c.text, W/2, y + 24);
     ctx.globalAlpha = 1;
   }
 
@@ -2136,8 +2163,8 @@ function drawHUD() {
 function drawSlot() {
   // Overlay only — no screen dimming; world keeps rendering underneath
   // Panel height is 70% of the original 150px; cards scale uniformly (3:4)
-  const panelY = 48;
-  const panelH = Math.round(150 * 0.7); // 105
+  const panelY = SLOT_PANEL_Y;
+  const panelH = SLOT_PANEL_H; // 105
   const scale = 0.7;
   ctx.fillStyle = "rgba(20,10,30,0.92)";
   roundRect(40, panelY, W - 80, panelH, 12);
@@ -2880,6 +2907,8 @@ window.__HBC = {
   getCollection: () => collection,
   getSlot: () => slot,
   getSlotQueue: () => slotQueue,
+  getCallouts: () => callouts.map(c => ({ text: c.text, t: c.t, dur: c.dur, y: c.y, alpha: calloutAlpha(c) })),
+  getCalloutTiming: () => ({ fadeIn: CALLOUT_IN, hold: CALLOUT_HOLD, fadeOut: CALLOUT_OUT }),
   getCardAspect: () => CARD_ASPECT,
   getCardImgs: () => cardImgs,
   forceSlotResult: (id) => {
