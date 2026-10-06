@@ -117,55 +117,102 @@ const sfx = {
   new:   () => { beep(700, 0.1, "square", 0.06); setTimeout(() => beep(1050, 0.2, "square", 0.06), 100); },
 };
 
-// ---------- Character pool (12 placeholders) ----------
+// ---------- Babe pool (data-driven; grow by appending entries) ----------
 const RARITIES = [
-  { id: "common",    label: "Common",    color: "#9aa0a6", weight: 50 },
-  { id: "rare",      label: "Rare",      color: "#4ea1ff", weight: 28 },
-  { id: "epic",      label: "Epic",      color: "#c06bff", weight: 15 },
-  { id: "legendary", label: "Legendary", color: "#ffb020", weight: 7 },
+  { id: "common",    label: "Common",    color: "#9aa0a6", weight: 50, order: 0 },
+  { id: "rare",      label: "Rare",      color: "#4ea1ff", weight: 28, order: 1 },
+  { id: "epic",      label: "Epic",      color: "#c06bff", weight: 15, order: 2 },
+  { id: "legendary", label: "Legendary", color: "#ffb020", weight: 7,  order: 3 },
 ];
+const RARITY_ORDER = Object.fromEntries(RARITIES.map(r => [r.id, r.order]));
 
-const CHAR_DEFS = [
-  { id: "ruby",   name: "Ruby",   rarity: "common",    hue: 0,   shape: "hourglass" },
-  { id: "luna",   name: "Luna",   rarity: "common",    hue: 220, shape: "star" },
-  { id: "jade",   name: "Jade",   rarity: "common",    hue: 140, shape: "diamond" },
-  { id: "nova",   name: "Nova",   rarity: "common",    hue: 40,  shape: "circle" },
-  { id: "kira",   name: "Kira",   rarity: "rare",      hue: 300, shape: "heart" },
-  { id: "mira",   name: "Mira",   rarity: "rare",      hue: 180, shape: "hourglass" },
-  { id: "suki",   name: "Suki",   rarity: "rare",      hue: 25,  shape: "star" },
-  { id: "zara",   name: "Zara",   rarity: "epic",      hue: 330, shape: "diamond" },
-  { id: "ivy",    name: "Ivy",    rarity: "epic",      hue: 110, shape: "heart" },
-  { id: "vex",    name: "Vex",    rarity: "epic",      hue: 270, shape: "circle" },
-  { id: "aurora", name: "Aurora", rarity: "legendary", hue: 50,  shape: "star" },
-  { id: "sol",    name: "Sol",    rarity: "legendary", hue: 15,  shape: "hourglass" },
+// Placeholder babe defs: { id, name, rarity, hue, shape } — art hooks later via optional `art`
+const BABE_POOL = [
+  // Original 12
+  { id: "ruby",    name: "Ruby",    rarity: "common",    hue: 0,   shape: "hourglass" },
+  { id: "luna",    name: "Luna",    rarity: "common",    hue: 220, shape: "star" },
+  { id: "jade",    name: "Jade",    rarity: "common",    hue: 140, shape: "diamond" },
+  { id: "nova",    name: "Nova",    rarity: "common",    hue: 40,  shape: "circle" },
+  { id: "kira",    name: "Kira",    rarity: "rare",      hue: 300, shape: "heart" },
+  { id: "mira",    name: "Mira",    rarity: "rare",      hue: 180, shape: "hourglass" },
+  { id: "suki",    name: "Suki",    rarity: "rare",      hue: 25,  shape: "star" },
+  { id: "zara",    name: "Zara",    rarity: "epic",      hue: 330, shape: "diamond" },
+  { id: "ivy",     name: "Ivy",     rarity: "epic",      hue: 110, shape: "heart" },
+  { id: "vex",     name: "Vex",     rarity: "epic",      hue: 270, shape: "circle" },
+  { id: "aurora",  name: "Aurora",  rarity: "legendary", hue: 50,  shape: "star" },
+  { id: "sol",     name: "Sol",     rarity: "legendary", hue: 15,  shape: "hourglass" },
+  // +18 placeholders
+  { id: "cleo",    name: "Cleo",    rarity: "common",    hue: 340, shape: "circle" },
+  { id: "daisy",   name: "Daisy",   rarity: "common",    hue: 55,  shape: "star" },
+  { id: "ember",   name: "Ember",   rarity: "common",    hue: 18,  shape: "diamond" },
+  { id: "faye",    name: "Faye",    rarity: "common",    hue: 200, shape: "heart" },
+  { id: "gigi",    name: "Gigi",    rarity: "common",    hue: 160, shape: "hourglass" },
+  { id: "haze",    name: "Haze",    rarity: "common",    hue: 250, shape: "circle" },
+  { id: "iris",    name: "Iris",    rarity: "common",    hue: 275, shape: "star" },
+  { id: "juno",    name: "Juno",    rarity: "common",    hue: 95,  shape: "diamond" },
+  { id: "nyx",     name: "Nyx",     rarity: "rare",      hue: 265, shape: "hourglass" },
+  { id: "opal",    name: "Opal",    rarity: "rare",      hue: 190, shape: "circle" },
+  { id: "piper",   name: "Piper",   rarity: "rare",      hue: 35,  shape: "heart" },
+  { id: "quill",   name: "Quill",   rarity: "rare",      hue: 210, shape: "star" },
+  { id: "raven",   name: "Raven",   rarity: "rare",      hue: 285, shape: "diamond" },
+  { id: "sage",    name: "Sage",    rarity: "epic",      hue: 125, shape: "circle" },
+  { id: "tess",    name: "Tess",    rarity: "epic",      hue: 10,  shape: "hourglass" },
+  { id: "uma",     name: "Uma",     rarity: "epic",      hue: 310, shape: "star" },
+  { id: "wren",    name: "Wren",    rarity: "legendary", hue: 175, shape: "heart" },
+  { id: "yuki",    name: "Yuki",    rarity: "legendary", hue: 205, shape: "diamond" },
 ];
+// Alias for older call sites
+const CHAR_DEFS = BABE_POOL;
 
+function babeById(id) { return BABE_POOL.find(b => b.id === id) || null; }
 function rarityOf(id) {
-  const c = CHAR_DEFS.find(x => x.id === id);
+  const c = babeById(id);
   return RARITIES.find(r => r.id === (c ? c.rarity : "common"));
 }
+function rarityRank(id) { return RARITY_ORDER[(babeById(id) || {}).rarity] || 0; }
 
 function rollCharacter() {
   const total = RARITIES.reduce((s, r) => s + r.weight, 0);
   let n = Math.random() * total;
   let rarity = RARITIES[0];
   for (const r of RARITIES) { n -= r.weight; if (n <= 0) { rarity = r; break; } }
-  const pool = CHAR_DEFS.filter(c => c.rarity === rarity.id);
+  const pool = BABE_POOL.filter(c => c.rarity === rarity.id);
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-// ---------- localStorage collection ----------
+function ownedUniqueCount(col) {
+  return Object.keys(col).filter(k => col[k] > 0 && babeById(k)).length;
+}
+function totalPulls(col) {
+  return Object.values(col).reduce((s, n) => s + n, 0);
+}
+
+// ---------- localStorage collection (v1 counts map; v2 wraps same map) ----------
 const SAVE_KEY = "hbc_collection_v1";
+const SAVE_KEY_V2 = "hbc_collection_v2";
 function loadCollection() {
   try {
+    const v2 = localStorage.getItem(SAVE_KEY_V2);
+    if (v2) {
+      const obj = JSON.parse(v2);
+      if (obj && typeof obj === "object" && obj.counts && typeof obj.counts === "object") return obj.counts;
+    }
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return {};
     const obj = JSON.parse(raw);
-    return obj && typeof obj === "object" ? obj : {};
+    // migrate v1 → v2 quietly
+    if (obj && typeof obj === "object") {
+      try { localStorage.setItem(SAVE_KEY_V2, JSON.stringify({ v: 2, counts: obj })); } catch {}
+      return obj;
+    }
+    return {};
   } catch { return {}; }
 }
 function saveCollection(col) {
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(col)); } catch {}
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify(col)); // keep v1 readable
+    localStorage.setItem(SAVE_KEY_V2, JSON.stringify({ v: 2, counts: col }));
+  } catch {}
 }
 
 // ---------- Input ----------
@@ -184,6 +231,18 @@ window.addEventListener("keydown", e => {
 window.addEventListener("keyup", e => {
   const code = e.code === "Space" ? " " : e.key.toLowerCase();
   keys[code] = false;
+});
+window.addEventListener("wheel", e => {
+  if (state !== "collection") return;
+  e.preventDefault();
+  gallery.scroll += e.deltaY;
+}, { passive: false });
+canvas.addEventListener("mousedown", e => {
+  if (state !== "collection") return;
+  const rect = canvas.getBoundingClientRect();
+  const sx = (e.clientX - rect.left) * (W / rect.width);
+  const sy = (e.clientY - rect.top) * (H / rect.height);
+  handleGalleryClick(sx, sy);
 });
 
 // Touch controls
@@ -495,7 +554,15 @@ let callouts = []; // floating text
 let slot = null; // slot machine overlay (gameplay keeps running)
 let slotQueue = 0; // pending rolls earned while a roll is already playing
 let loseAnim = null;
-let winStats = null
+let winStats = null;
+let recentPicks = []; // last up to 4 babe ids for HUD tray
+let runGained = [];   // babe ids gained this run (for win screen)
+let gallery = {
+  filter: "all", // all | owned | missing | common | rare | epic | legendary
+  scroll: 0,
+  selected: null, // babe id
+};
+const GALLERY_FILTERS = ["all", "owned", "missing", "common", "rare", "epic", "legendary"];
 
 const player = {
   x: 64, y: 14*TILE - 40, w: 24, h: 36,
@@ -517,6 +584,11 @@ function resetLevel(full) {
   if (full) {
     checkpointIdx = 0;
     collection = loadCollection();
+    runGained = [];
+    recentPicks = [];
+    gallery.scroll = 0;
+    gallery.selected = null;
+    gallery.filter = "all";
   }
   const cp = checkpoints[checkpointIdx];
   player.x = cp.x;
@@ -686,6 +758,9 @@ function finishSlot() {
   const prev = collection[id] || 0;
   collection[id] = prev + 1;
   saveCollection(collection);
+  recentPicks.unshift(id);
+  if (recentPicks.length > 4) recentPicks.length = 4;
+  runGained.push(id);
   if (prev === 0) {
     addCallout("NEW! " + slot.result.name, "#ffe66d");
     sfx.new();
@@ -819,10 +894,11 @@ function updatePlay(dt) {
   if (aabb(player, goal)) {
     state = "win";
     winStats = {
-      unique: Object.keys(collection).length,
-      total: Object.values(collection).reduce((s,n)=>s+n,0),
+      unique: ownedUniqueCount(collection),
+      total: totalPulls(collection),
       coins: coins.filter(c => c.collected).length,
       coinsMax: coins.length,
+      gained: runGained.slice(),
     };
     sfx.win();
   }
@@ -1071,65 +1147,53 @@ function drawWorld() {
 function drawHudLiveBabes() {
   if (state !== "play" && state !== "dead") return;
 
-  const cols = 6, rows = 2;
-  const gapX = 3, gapY = 3;
-  const padX = 6, padTop = 14, padBot = 6;
-  // Linear ~1/2.8 of death mini card (~115px) → ~40; nudge smaller for "really small but legible"
-  const cw = 30;
+  const thumbs = 4;
+  const cw = 28;
   const ch = cardHeight(cw);
-  const gridW = cols * cw + (cols - 1) * gapX;
-  const gridH = rows * ch + (rows - 1) * gapY;
-  const panelW = gridW + padX * 2;
-  const panelH = padTop + gridH + padBot;
-
-  // Bottom-right; lift above mobile jump button (~80px) when touch controls are shown
+  const gap = 4;
+  const pad = 8;
+  const counterH = 18;
+  const panelW = pad * 2 + thumbs * cw + (thumbs - 1) * gap;
+  const panelH = pad + counterH + ch + pad;
   const margin = 10;
   const lift = isTouch ? 108 : 18;
   const panelX = W - panelW - margin;
   const panelY = H - panelH - lift;
 
   ctx.save();
-  ctx.globalAlpha = 0.72;
-  ctx.fillStyle = "rgba(12,8,22,0.75)";
+  ctx.globalAlpha = 0.78;
+  ctx.fillStyle = "rgba(12,8,22,0.78)";
   roundRect(panelX, panelY, panelW, panelH, 8);
   ctx.fill();
-  ctx.strokeStyle = "rgba(255,90,154,0.4)";
+  ctx.strokeStyle = "rgba(255,90,154,0.45)";
   ctx.lineWidth = 1.5;
   roundRect(panelX, panelY, panelW, panelH, 8);
   ctx.stroke();
-  ctx.globalAlpha = 0.9;
-  ctx.fillStyle = "#ffb0d0";
-  ctx.font = "bold 9px sans-serif";
-  ctx.textAlign = "left";
-  ctx.fillText("Babes", panelX + padX, panelY + 10);
-  const unique = Object.keys(collection).filter(k => collection[k] > 0).length;
-  ctx.textAlign = "right";
-  ctx.fillStyle = "rgba(255,255,255,0.85)";
-  ctx.fillText(unique + "/" + CHAR_DEFS.length, panelX + panelW - padX, panelY + 10);
 
-  for (let i = 0; i < CHAR_DEFS.length; i++) {
-    const col = i % cols, row = Math.floor(i / cols);
-    const x = panelX + padX + col * (cw + gapX);
-    const y = panelY + padTop + row * (ch + gapY);
-    const char = CHAR_DEFS[i];
-    const count = collection[char.id] || 0;
-    const isLost = state === "dead" && loseAnim && loseAnim.lostId === char.id;
-    ctx.globalAlpha = (count > 0 || isLost) ? 0.95 : 0.55;
-    if (isLost) {
-      const displayCount = count > 0 ? count : (loseAnim.lostPrevCount > 1 ? loseAnim.lostPrevCount - 1 : null);
-      drawCard(char, x, y, cw, ch, {
-        locked: false,
-        count: displayCount && displayCount > 1 ? displayCount : null,
-        iconOnly: true,
-      });
-      drawLostBabeX(x, y, cw, ch, loseAnim.t);
-    } else {
-      drawCard(char, x, y, cw, ch, {
-        locked: count === 0,
-        count: count > 1 ? count : null,
-        iconOnly: true,
-      });
+  const unique = ownedUniqueCount(collection);
+  ctx.globalAlpha = 0.95;
+  ctx.fillStyle = "#ffb0d0";
+  ctx.font = "bold 11px sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText("Babes " + unique + "/" + BABE_POOL.length, panelX + pad, panelY + 14);
+
+  for (let i = 0; i < thumbs; i++) {
+    const id = recentPicks[i];
+    const x = panelX + pad + i * (cw + gap);
+    const y = panelY + pad + counterH;
+    if (!id) {
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = "#2a2a34";
+      roundRect(x, y, cw, ch, 4);
+      ctx.fill();
+      continue;
     }
+    const babe = babeById(id);
+    if (!babe) continue;
+    const isLost = state === "dead" && loseAnim && loseAnim.lostId === id;
+    ctx.globalAlpha = 0.95;
+    drawCard(babe, x, y, cw, ch, { locked: false, iconOnly: true });
+    if (isLost) drawLostBabeX(x, y, cw, ch, loseAnim.t);
   }
   ctx.restore();
 }
@@ -1149,15 +1213,15 @@ function drawHUD() {
   }
 
   // collection count
-  const unique = Object.keys(collection).length;
-  const total = Object.values(collection).reduce((s,n)=>s+n,0);
+  const unique = ownedUniqueCount(collection);
+  const total = totalPulls(collection);
   ctx.fillStyle = "rgba(0,0,0,0.4)";
   roundRect(W - 170, 8, 158, 36, 8);
   ctx.fill();
   ctx.fillStyle = "#fff";
   ctx.font = "bold 13px sans-serif";
   ctx.textAlign = "left";
-  ctx.fillText("Babes " + unique + "/" + CHAR_DEFS.length, W - 158, 24);
+  ctx.fillText("Babes " + unique + "/" + BABE_POOL.length, W - 158, 24);
   ctx.font = "11px sans-serif";
   ctx.fillStyle = "#ffb0d0";
   ctx.fillText("Total pulls: " + total + "  [C]", W - 158, 38);
@@ -1249,40 +1313,213 @@ function drawSlot() {
   }
 }
 
-function drawCollection() {
-  ctx.fillStyle = "rgba(12,8,20,0.94)";
-  ctx.fillRect(0, 0, W, H);
+function galleryFilteredList() {
+  let list = BABE_POOL.slice();
+  const f = gallery.filter;
+  if (f === "owned") list = list.filter(b => (collection[b.id] || 0) > 0);
+  else if (f === "missing") list = list.filter(b => !(collection[b.id] > 0));
+  else if (f === "common" || f === "rare" || f === "epic" || f === "legendary") {
+    list = list.filter(b => b.rarity === f);
+  }
+  list.sort((a, b) => {
+    const rd = rarityRank(a.id) - rarityRank(b.id);
+    if (rd !== 0) return rd;
+    return a.name.localeCompare(b.name);
+  });
+  return list;
+}
 
-  ctx.fillStyle = "#ff8ec8";
-  ctx.font = "bold 28px sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText("Babe Gallery", W/2, 42);
-  ctx.font = "13px sans-serif";
-  ctx.fillStyle = "#aaa";
-  ctx.fillText("Press C or Esc to close", W/2, 64);
-
-  const cols = 6, rows = 2;
-  const cw = 110, ch = cardHeight(110), gapX = 24, gapY = 20;
+function handleGalleryClick(sx, sy) {
+  // Filter tabs
+  const tabY = 56, tabH = 28, tabGap = 6;
+  const labels = GALLERY_FILTERS;
+  let tx = 40;
+  for (const lab of labels) {
+    const label = lab[0].toUpperCase() + lab.slice(1);
+    ctx.font = "bold 11px sans-serif";
+    const tw = Math.max(54, ctx.measureText(label).width + 16);
+    if (sx >= tx && sx <= tx + tw && sy >= tabY && sy <= tabY + tabH) {
+      gallery.filter = lab;
+      gallery.scroll = 0;
+      gallery.selected = null;
+      return;
+    }
+    tx += tw + tabGap;
+  }
+  // Page buttons
+  if (sx >= W - 120 && sx <= W - 70 && sy >= H - 42 && sy <= H - 14) {
+    gallery.scroll = Math.max(0, gallery.scroll - 160);
+    return;
+  }
+  if (sx >= W - 60 && sx <= W - 10 && sy >= H - 42 && sy <= H - 14) {
+    gallery.scroll += 160;
+    return;
+  }
+  // Detail close
+  if (gallery.selected) {
+    if (sx >= W / 2 - 40 && sx <= W / 2 + 40 && sy >= H - 50 && sy <= H - 22) {
+      gallery.selected = null;
+      return;
+    }
+  }
+  // Grid hit
+  const list = galleryFilteredList();
+  const cols = 5;
+  const cw = 100, ch = cardHeight(cw), gapX = 16, gapY = 14;
   const gridW = cols * cw + (cols - 1) * gapX;
   const startX = (W - gridW) / 2;
-  const startY = 90;
-
-  for (let i = 0; i < CHAR_DEFS.length; i++) {
+  const startY = 100 - gallery.scroll;
+  for (let i = 0; i < list.length; i++) {
     const col = i % cols, row = Math.floor(i / cols);
     const x = startX + col * (cw + gapX);
     const y = startY + row * (ch + gapY);
-    const char = CHAR_DEFS[i];
-    const count = collection[char.id] || 0;
-    drawCard(char, x, y, cw, ch, {
+    if (sx >= x && sx <= x + cw && sy >= y && sy <= y + ch) {
+      gallery.selected = list[i].id;
+      return;
+    }
+  }
+}
+
+function updateGalleryInput() {
+  if (justPressed["arrowleft"] || justPressed["a"]) gallery.scroll = Math.max(0, gallery.scroll - 120);
+  if (justPressed["arrowright"] || justPressed["d"]) gallery.scroll += 120;
+  if (justPressed["arrowup"] || justPressed["w"]) gallery.scroll = Math.max(0, gallery.scroll - 80);
+  if (justPressed["arrowdown"] || justPressed["s"]) gallery.scroll += 80;
+  if (justPressed["pageup"]) gallery.scroll = Math.max(0, gallery.scroll - 220);
+  if (justPressed["pagedown"]) gallery.scroll += 220;
+  // number keys 1-7 for filters
+  for (let i = 0; i < GALLERY_FILTERS.length; i++) {
+    if (justPressed[String(i + 1)]) {
+      gallery.filter = GALLERY_FILTERS[i];
+      gallery.scroll = 0;
+      gallery.selected = null;
+    }
+  }
+  if (justPressed["escape"] && gallery.selected) {
+    gallery.selected = null;
+    justPressed["escape"] = false; // consume so we don't close gallery
+  }
+}
+
+function drawCollection() {
+  updateGalleryInput();
+  ctx.fillStyle = "rgba(12,8,20,0.94)";
+  ctx.fillRect(0, 0, W, H);
+
+  const unique = ownedUniqueCount(collection);
+  ctx.fillStyle = "#ff8ec8";
+  ctx.font = "bold 26px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("Babe Gallery", W / 2, 34);
+  ctx.font = "bold 14px sans-serif";
+  ctx.fillStyle = "#fff";
+  ctx.fillText("Babes " + unique + "/" + BABE_POOL.length, W / 2, 54);
+  ctx.font = "11px sans-serif";
+  ctx.fillStyle = "#888";
+  ctx.fillText("C / Esc close  ·  Wheel / arrows scroll  ·  1–7 filters  ·  Click to inspect", W / 2, H - 10);
+
+  // Filter tabs
+  const tabY = 62, tabH = 26, tabGap = 6;
+  let tx = 36;
+  ctx.textAlign = "center";
+  for (const lab of GALLERY_FILTERS) {
+    const label = lab[0].toUpperCase() + lab.slice(1);
+    ctx.font = "bold 11px sans-serif";
+    const tw = Math.max(54, ctx.measureText(label).width + 16);
+    const active = gallery.filter === lab;
+    ctx.fillStyle = active ? "rgba(255,90,154,0.55)" : "rgba(255,255,255,0.1)";
+    roundRect(tx, tabY, tw, tabH, 6);
+    ctx.fill();
+    ctx.strokeStyle = active ? "#ff8ec8" : "rgba(255,255,255,0.2)";
+    ctx.lineWidth = 1;
+    roundRect(tx, tabY, tw, tabH, 6);
+    ctx.stroke();
+    ctx.fillStyle = active ? "#fff" : "#bbb";
+    ctx.fillText(label, tx + tw / 2, tabY + 17);
+    tx += tw + tabGap;
+  }
+
+  const list = galleryFilteredList();
+  const cols = 5;
+  const cw = 100, ch = cardHeight(cw), gapX = 16, gapY = 14;
+  const gridW = cols * cw + (cols - 1) * gapX;
+  const startX = (W - gridW) / 2;
+  const startY = 100;
+  const rows = Math.ceil(list.length / cols) || 1;
+  const contentH = rows * (ch + gapY);
+  const viewH = H - startY - 48;
+  const maxScroll = Math.max(0, contentH - viewH);
+  gallery.scroll = Math.max(0, Math.min(gallery.scroll, maxScroll));
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, startY - 4, W, viewH + 8);
+  ctx.clip();
+  for (let i = 0; i < list.length; i++) {
+    const col = i % cols, row = Math.floor(i / cols);
+    const x = startX + col * (cw + gapX);
+    const y = startY + row * (ch + gapY) - gallery.scroll;
+    if (y + ch < startY - 10 || y > startY + viewH + 10) continue;
+    const babe = list[i];
+    const count = collection[babe.id] || 0;
+    drawCard(babe, x, y, cw, ch, {
       locked: count === 0,
       count: count > 0 ? count : null,
     });
+    if (gallery.selected === babe.id) {
+      ctx.strokeStyle = "#ffe66d";
+      ctx.lineWidth = 3;
+      roundRect(x - 2, y - 2, cw + 4, ch + 4, 10);
+      ctx.stroke();
+    }
   }
+  ctx.restore();
 
-  const unique = Object.keys(collection).length;
+  // Page buttons
+  ctx.fillStyle = "rgba(255,255,255,0.15)";
+  roundRect(W - 120, H - 42, 46, 28, 6);
+  ctx.fill();
+  roundRect(W - 60, H - 42, 46, 28, 6);
+  ctx.fill();
   ctx.fillStyle = "#fff";
-  ctx.font = "14px sans-serif";
-  ctx.fillText("Owned " + unique + " / " + CHAR_DEFS.length + " unique babes", W/2, H - 28);
+  ctx.font = "bold 14px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("▲", W - 97, H - 23);
+  ctx.fillText("▼", W - 37, H - 23);
+
+  // Detail overlay
+  if (gallery.selected) {
+    const babe = babeById(gallery.selected);
+    if (babe) {
+      const count = collection[babe.id] || 0;
+      const rar = rarityOf(babe.id);
+      ctx.fillStyle = "rgba(0,0,0,0.65)";
+      ctx.fillRect(0, 0, W, H);
+      const dw = 180, dh = cardHeight(dw);
+      const dx = (W - dw) / 2, dy = 110;
+      drawCard(babe, dx, dy, dw, dh, {
+        locked: count === 0,
+        count: count > 0 ? count : null,
+        glow: count > 0 ? 0.6 : 0,
+      });
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 28px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(count > 0 ? babe.name : "???", W / 2, dy + dh + 36);
+      ctx.fillStyle = rar.color;
+      ctx.font = "bold 16px sans-serif";
+      ctx.fillText(rar.label, W / 2, dy + dh + 60);
+      ctx.fillStyle = "#ccc";
+      ctx.font = "14px sans-serif";
+      ctx.fillText(count > 0 ? ("Owned ×" + count) : "Not yet collected", W / 2, dy + dh + 84);
+      ctx.fillStyle = "rgba(255,255,255,0.2)";
+      roundRect(W / 2 - 50, H - 52, 100, 30, 8);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 13px sans-serif";
+      ctx.fillText("Close", W / 2, H - 32);
+    }
+  }
 }
 
 function drawTitle() {
@@ -1436,33 +1673,43 @@ function drawDead() {
   ctx.fillStyle = "rgba(40,5,15,0.7)";
   ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = "#ff6b8a";
-  ctx.font = "bold 32px sans-serif";
+  ctx.font = "bold 36px sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("Ouch!", W/2, 70);
-  if (loseAnim && loseAnim.name) {
+  ctx.fillText("Ouch!", W / 2, 90);
+  const unique = ownedUniqueCount(collection);
+  ctx.fillStyle = "#ffb0d0";
+  ctx.font = "14px sans-serif";
+  ctx.fillText("Babes owned: " + unique + "/" + BABE_POOL.length, W / 2, 122);
+
+  if (loseAnim && loseAnim.lostId) {
+    const babe = babeById(loseAnim.lostId);
     ctx.fillStyle = "#ffe66d";
     ctx.font = "bold 22px sans-serif";
-    ctx.fillText("LOST: " + loseAnim.name, W/2, 108);
+    ctx.fillText("LOST: " + (loseAnim.name || "???"), W / 2, 160);
     ctx.fillStyle = "#ccc";
     ctx.font = "13px sans-serif";
-    ctx.fillText("A random babe was taken from your collection", W/2, 132);
+    ctx.fillText("A random babe was taken from your collection", W / 2, 186);
+    if (babe) {
+      const cw = 140, ch = cardHeight(cw);
+      const x = (W - cw) / 2, y = 210;
+      const displayCount = (collection[babe.id] || 0) > 0
+        ? collection[babe.id]
+        : (loseAnim.lostPrevCount > 1 ? loseAnim.lostPrevCount - 1 : null);
+      drawCard(babe, x, y, cw, ch, {
+        locked: false,
+        count: displayCount,
+        showRarity: true,
+      });
+      drawLostBabeX(x, y, cw, ch, loseAnim.t);
+    }
   } else {
     ctx.fillStyle = "#ccc";
-    ctx.font = "15px sans-serif";
-    ctx.fillText("No babes to lose… this time.", W/2, 108);
+    ctx.font = "16px sans-serif";
+    ctx.fillText("No babes to lose… this time.", W / 2, 170);
   }
   ctx.fillStyle = "#aaa";
-  ctx.font = "12px sans-serif";
-  ctx.fillText("Respawning at checkpoint…", W/2, 154);
-
-  drawMiniCollection({
-    x: 100, y: 168, w: W - 200,
-    maxH: H - 168 - 16,
-    lostId: loseAnim && loseAnim.lostId,
-    lostPrevCount: loseAnim && loseAnim.lostPrevCount,
-    animT: loseAnim ? loseAnim.t : 0,
-    animDur: loseAnim ? loseAnim.dur : 2.2,
-  });
+  ctx.font = "13px sans-serif";
+  ctx.fillText("Respawning at checkpoint…", W / 2, H - 36);
 }
 
 function drawWin() {
@@ -1471,31 +1718,66 @@ function drawWin() {
   ctx.fillStyle = "#ffe66d";
   ctx.font = "bold 36px sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("Level Complete!", W/2, 48);
+  ctx.fillText("Level Complete!", W / 2, 48);
   ctx.fillStyle = "#ff8ec8";
   ctx.font = "15px sans-serif";
-  ctx.fillText("Big Salty Gaming Studio thanks you", W/2, 74);
+  ctx.fillText("Big Salty Gaming Studio thanks you", W / 2, 74);
 
   if (winStats) {
     ctx.fillStyle = "#fff";
     ctx.font = "14px sans-serif";
     ctx.fillText(
       "Coins " + winStats.coins + "/" + winStats.coinsMax +
-      "   ·   Unique " + winStats.unique + "/" + CHAR_DEFS.length +
+      "   ·   Babes " + winStats.unique + "/" + BABE_POOL.length +
       "   ·   Pulls " + winStats.total,
-      W/2, 102
+      W / 2, 102
     );
   }
 
-  const mini = drawMiniCollection({ x: 100, y: 118, w: W - 200, maxH: H - 118 - 70 });
+  ctx.fillStyle = "#ffb0d0";
+  ctx.font = "bold 16px sans-serif";
+  ctx.fillText("Babes gained this run", W / 2, 140);
+
+  const gained = (winStats && winStats.gained) ? winStats.gained : [];
+  if (!gained.length) {
+    ctx.fillStyle = "#888";
+    ctx.font = "14px sans-serif";
+    ctx.fillText("No babes collected this run — next time!", W / 2, 220);
+  } else {
+    const cw = 72, ch = cardHeight(cw), gap = 12;
+    const totalW = gained.length * cw + (gained.length - 1) * gap;
+    // Scrollable row if too wide
+    const maxW = W - 80;
+    const scrollMax = Math.max(0, totalW - maxW);
+    if (winStats._gScroll == null) winStats._gScroll = 0;
+    if (justPressed["arrowleft"] || justPressed["a"]) winStats._gScroll = Math.max(0, winStats._gScroll - 80);
+    if (justPressed["arrowright"] || justPressed["d"]) winStats._gScroll = Math.min(scrollMax, winStats._gScroll + 80);
+    const origin = (W - Math.min(totalW, maxW)) / 2 - winStats._gScroll;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(40, 160, W - 80, ch + 40);
+    ctx.clip();
+    for (let i = 0; i < gained.length; i++) {
+      const babe = babeById(gained[i]);
+      if (!babe) continue;
+      const x = origin + i * (cw + gap);
+      drawCard(babe, x, 168, cw, ch, { showRarity: false });
+    }
+    ctx.restore();
+    if (scrollMax > 0) {
+      ctx.fillStyle = "#888";
+      ctx.font = "11px sans-serif";
+      ctx.fillText("← → scroll", W / 2, 168 + ch + 28);
+    }
+  }
 
   ctx.fillStyle = "#ffe66d";
   ctx.font = "bold 16px sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("Press R or Enter to Restart", W/2, Math.min(H - 48, 118 + mini.panelH + 28));
+  ctx.fillText("Press R or Enter to Restart", W / 2, H - 48);
   ctx.fillStyle = "#aaa";
   ctx.font = "13px sans-serif";
-  ctx.fillText("Press C to view full babe gallery", W/2, Math.min(H - 26, 118 + mini.panelH + 50));
+  ctx.fillText("Press C to view full babe gallery", W / 2, H - 26);
 }
 
 function frame(dt) {
@@ -1517,7 +1799,10 @@ function frame(dt) {
     drawHUD();
     if (slot) drawSlot();
     drawCollection();
-    if (justPressed["c"] || justPressed["escape"]) state = "play";
+    if (justPressed["c"] || (justPressed["escape"] && !gallery.selected)) {
+      gallery.selected = null;
+      state = "play";
+    }
     return;
   }
 
@@ -1594,20 +1879,22 @@ window.__HBC = {
   getCardAspect: () => CARD_ASPECT,
   getCardLayouts: () => {
     const slot = { w: 72, h: cardHeight(72) };
-    const collection = { w: 110, h: cardHeight(110) };
+    const collection = { w: 100, h: cardHeight(100) };
     const title = { w: 90, h: cardHeight(90) };
     const world = { w: 15, h: cardHeight(15) };
-    const death = layoutMiniCollection(W - 200, H - 168 - 16);
-    const win = layoutMiniCollection(W - 200, H - 118 - 70);
+    const death = { w: 140, h: cardHeight(140) };
+    const win = { w: 72, h: cardHeight(72) };
+    const hud = { w: 28, h: cardHeight(28) };
     return {
       aspect: CARD_ASPECT,
+      poolSize: BABE_POOL.length,
       slot: { ...slot, ratio: slot.w / slot.h },
       collection: { ...collection, ratio: collection.w / collection.h },
       title: { ...title, ratio: title.w / title.h },
       worldPickup: { ...world, ratio: world.w / world.h },
-      miniDeath: { w: death.cw, h: death.ch, ratio: death.cw / death.ch },
-      miniWin: { w: win.cw, h: win.ch, ratio: win.cw / win.ch },
-      hudLive: { w: 30, h: cardHeight(30), ratio: 30 / cardHeight(30) },
+      miniDeath: { ...death, ratio: death.w / death.h },
+      miniWin: { ...win, ratio: win.w / win.h },
+      hudLive: { ...hud, ratio: hud.w / hud.h },
     };
   },
   getLoseAnim: () => loseAnim,
@@ -1630,7 +1917,12 @@ window.__HBC = {
     onCoinCollected();
     return true;
   },
-  openCollection: () => { state = "collection"; },
+  openCollection: () => { state = "collection"; gallery.selected = null; },
+  setGalleryFilter: (f) => { gallery.filter = f; gallery.scroll = 0; },
+  getGallery: () => gallery,
+  getBabePool: () => BABE_POOL,
+  getRecentPicks: () => recentPicks,
+  getRunGained: () => runGained,
 };
 </script>
 </body>

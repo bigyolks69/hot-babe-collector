@@ -10,7 +10,9 @@ Single-file game: open `index.html` in Chrome or Safari (double-click works offl
 |--------|------|
 | Move | ← → or A D |
 | Jump | Space / W / ↑ (hold for higher jump) |
-| Babe gallery | C (or Esc to close) |
+| Babe gallery | C (Esc closes; Esc also closes detail) |
+| Gallery filters | 1–7 or click tabs |
+| Gallery scroll | Mouse wheel / arrows / on-screen ▲▼ |
 | Start | Enter / Space on title |
 | Restart (after win) | R or Enter |
 
@@ -18,16 +20,15 @@ On touch devices, on-screen buttons appear (← → jump C).
 
 ## Design notes (prototype)
 
-- **HUD**: tiny live **Babes** tray (bottom-right) during gameplay — all 12 slots, 3:4 thumbs, updates live.
-- **Babe art**: all babes use a shared **3:4** aspect (`CARD_ASPECT = 72/96`); views scale uniformly (no squash).
-- **Collectibles**: **6** babe-coins in the level (sparse: start, optional highs, pit, end). Respawns on death.
-- **Coins → babes**: touching a coin runs a ~1.2s slot/lottery roll panel at the top as an **overlay** — gameplay does **not** pause (move, jump, enemies, physics, camera all keep going). Extra coins touched during a roll are **queued** (queue count shown). The strip eases onto a **pre-planted** result babe (no end snap). Short reveal (~0.275s) then `NEW!` / `DUPE` callout (~0.4s). Hits during a roll work normally; if you die mid-roll, the roll (and queue) still finish and grant babes; the lost babe is picked from babes you already owned.
-- **Hearts**: 3 HP. Monster contact = −1 heart, knockback + invulnerability flash. Stomp from above to defeat enemies.
-- **Death / win UI**: compact mini collection panel (owned thumbs + dupe counts, greyed missing, owned/total). On death the lost babe is highlighted/fades out.
-- **Hearts → 0**: lose one random collected babe (`LOST: <name>`), hearts reset to 3, respawn at last checkpoint. **All level coins/babes respawn** on that respawn.
-- **Pits / cliffs**: falling off the level is a **single full wipe** — all 3 hearts are lost at once, one random owned babe is taken (`LOST: <name>`), hearts reset to 3, coins respawn, checkpoint respawn (no multi-hit glitch).
-- **Save**: collection is stored in `localStorage` key `hbc_collection_v1`.
-- **Placeholder art only**: procedurally drawn gradient babes with silhouettes and generated names — no photos, nothing explicit.
+- **Babe pool**: **30** data-driven placeholders in `BABE_POOL` (append entries to grow). Shared **3:4** aspect (`CARD_ASPECT = 72/96`).
+- **HUD**: bottom-right live tray — `Babes N/30` plus the last **4** pickup thumbs (icon-only, 3:4).
+- **Gallery (C)**: scrollable grid, rarity→name sort, filters All / Owned / Missing / Common / Rare / Epic / Legendary, click for detail.
+- **Collectibles**: **6** babe-coins in the level (sparse). Respawns on death.
+- **Coins → babes**: ~1.2s slot roll overlay (gameplay continues); queued pickups; pre-planted result (no snap).
+- **Hearts**: 3 HP. Hit = knockback (~290 px/s away, vy −280) + 0.25s stun + invuln flash. Stomp from above.
+- **Death**: shows the **lost babe** with a fast pen-stroke red X + owned count (not the full grid). Pit = full wipe + lose one babe.
+- **Win**: babes gained this run (scrollable row) + totals.
+- **Save**: `hbc_collection_v1` counts map; also writes `hbc_collection_v2` wrapper (v1 still loaded/migrated).
 
 ## Files
 
