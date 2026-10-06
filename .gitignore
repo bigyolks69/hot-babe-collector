@@ -7,7 +7,7 @@ package.json
 playwright-report/
 test-results/
 
-# Scratch art — ship hero pixels + Iris card art only
+# Scratch art — ship hero pixels + Iris cardbacks only (fronts TBD)
 art/**
 !art/hero/
 !art/hero/pixel/
@@ -30,22 +30,6 @@ art/**
 !art/cards/cardback/normal/cardback_15x20.png
 !art/cards/cardback/normal/cardback_110x147.png
 !art/cards/cardback/normal/cardback_440x588.png
-!art/cards/v3/
-!art/cards/v3/card_mika_15x20.png
-!art/cards/v3/card_mika_110x147.png
-!art/cards/v3/card_mika_440x588.png
-!art/cards/v3/card_sora_15x20.png
-!art/cards/v3/card_sora_110x147.png
-!art/cards/v3/card_sora_440x588.png
-!art/cards/v3/card_rin_15x20.png
-!art/cards/v3/card_rin_110x147.png
-!art/cards/v3/card_rin_440x588.png
-!art/cards/v3/card_kaede_15x20.png
-!art/cards/v3/card_kaede_110x147.png
-!art/cards/v3/card_kaede_440x588.png
-!art/cards/v3/card_yuki_15x20.png
-!art/cards/v3/card_yuki_110x147.png
-!art/cards/v3/card_yuki_440x588.png
 
 # Audio scratch — ship only cry one-shot (+ loop ogg kept available)
 audio/**

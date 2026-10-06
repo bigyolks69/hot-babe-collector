@@ -519,14 +519,9 @@ const RARITIES = [
 const RARITY_ORDER = Object.fromEntries(RARITIES.map(r => [r.id, r.order]));
 
 // Placeholder babe defs: { id, name, rarity, hue, shape } — art hooks later via optional `art`
-// Iris art paths: sm 15×20, md 110×147, lg 440×588 (all 3:4)
-function babeArtPaths(name) {
-  const b = "art/cards/v3/card_" + name + "_";
-  return { sm: b + "15x20.png", md: b + "110x147.png", lg: b + "440x588.png" };
-}
-
+// Placeholder babe defs: { id, name, rarity, hue, shape } — front art TBD (cardbacks only for now)
 const BABE_POOL = [
-  // Original placeholders (no Iris art yet)
+  // Original 12
   { id: "ruby",    name: "Ruby",    rarity: "common",    hue: 0,   shape: "hourglass" },
   { id: "luna",    name: "Luna",    rarity: "common",    hue: 220, shape: "star" },
   { id: "jade",    name: "Jade",    rarity: "common",    hue: 140, shape: "diamond" },
@@ -539,32 +534,32 @@ const BABE_POOL = [
   { id: "vex",     name: "Vex",     rarity: "epic",      hue: 270, shape: "circle" },
   { id: "aurora",  name: "Aurora",  rarity: "legendary", hue: 50,  shape: "star" },
   { id: "sol",     name: "Sol",     rarity: "legendary", hue: 15,  shape: "hourglass" },
-  // Artist Iris illustrated set — replaced cleo/daisy/nyx/sage; yuki kept Legendary
-  { id: "mika",    name: "Mika",    rarity: "common",    hue: 340, shape: "circle",    art: babeArtPaths("mika") },
-  { id: "sora",    name: "Sora",    rarity: "common",    hue: 55,  shape: "star",      art: babeArtPaths("sora") },
+  // +18 placeholders
+  { id: "cleo",    name: "Cleo",    rarity: "common",    hue: 340, shape: "circle" },
+  { id: "daisy",   name: "Daisy",   rarity: "common",    hue: 55,  shape: "star" },
   { id: "ember",   name: "Ember",   rarity: "common",    hue: 18,  shape: "diamond" },
   { id: "faye",    name: "Faye",    rarity: "common",    hue: 200, shape: "heart" },
   { id: "gigi",    name: "Gigi",    rarity: "common",    hue: 160, shape: "hourglass" },
   { id: "haze",    name: "Haze",    rarity: "common",    hue: 250, shape: "circle" },
   { id: "iris",    name: "Iris",    rarity: "common",    hue: 275, shape: "star" },
   { id: "juno",    name: "Juno",    rarity: "common",    hue: 95,  shape: "diamond" },
-  { id: "rin",     name: "Rin",     rarity: "rare",      hue: 265, shape: "hourglass", art: babeArtPaths("rin") },
+  { id: "nyx",     name: "Nyx",     rarity: "rare",      hue: 265, shape: "hourglass" },
   { id: "opal",    name: "Opal",    rarity: "rare",      hue: 190, shape: "circle" },
   { id: "piper",   name: "Piper",   rarity: "rare",      hue: 35,  shape: "heart" },
   { id: "quill",   name: "Quill",   rarity: "rare",      hue: 210, shape: "star" },
   { id: "raven",   name: "Raven",   rarity: "rare",      hue: 285, shape: "diamond" },
-  { id: "kaede",   name: "Kaede",   rarity: "epic",      hue: 125, shape: "circle",    art: babeArtPaths("kaede") },
+  { id: "sage",    name: "Sage",    rarity: "epic",      hue: 125, shape: "circle" },
   { id: "tess",    name: "Tess",    rarity: "epic",      hue: 10,  shape: "hourglass" },
   { id: "uma",     name: "Uma",     rarity: "epic",      hue: 310, shape: "star" },
   { id: "wren",    name: "Wren",    rarity: "legendary", hue: 175, shape: "heart" },
-  { id: "yuki",    name: "Yuki",    rarity: "legendary", hue: 205, shape: "diamond",  art: babeArtPaths("yuki") },
+  { id: "yuki",    name: "Yuki",    rarity: "legendary", hue: 205, shape: "diamond" },
 ];
-// Save migration: old placeholder ids → Iris babes that took their slots
+// Map Iris-temp ids from 58dcf8d saves back onto the restored placeholders
 const BABE_ID_MIGRATE = {
-  cleo: "mika",
-  daisy: "sora",
-  nyx: "rin",
-  sage: "kaede",
+  mika: "cleo",
+  sora: "daisy",
+  rin: "nyx",
+  kaede: "sage",
 };
 // Alias for older call sites
 const CHAR_DEFS = BABE_POOL;
@@ -869,12 +864,11 @@ const CARD_ASPECT = 72 / 96; // 3/4
 function cardHeight(w) { return w / CARD_ASPECT; }
 function cardWidth(h) { return h * CARD_ASPECT; }
 
-// Iris cardbacks + fronts (preload; graceful null → procedural)
+// Iris cardbacks only (front art TBD). Graceful null → procedural.
 const cardImgs = {
   ready: false,
   mystery: { sm: null, md: null, lg: null },
   normal: { sm: null, md: null, lg: null },
-  babes: {}, // id → { sm, md, lg }
 };
 
 function pickCardSizeKey(drawW) {
@@ -905,13 +899,6 @@ async function preloadCardArt() {
   for (const [key, file] of sizes) {
     jobs.push(loadImg("art/cards/cardback/A5/cardback_" + file + ".png").then(im => { cardImgs.mystery[key] = im; }));
     jobs.push(loadImg("art/cards/cardback/normal/cardback_" + file + ".png").then(im => { cardImgs.normal[key] = im; }));
-  }
-  for (const b of BABE_POOL) {
-    if (!b.art) continue;
-    cardImgs.babes[b.id] = { sm: null, md: null, lg: null };
-    for (const key of ["sm", "md", "lg"]) {
-      jobs.push(loadImg(b.art[key]).then(im => { cardImgs.babes[b.id][key] = im; }));
-    }
   }
   await Promise.all(jobs);
   cardImgs.ready = true;
@@ -973,49 +960,33 @@ function drawCard(char, x, y, w, h, opts) {
     return;
   }
 
-  // Owned: Iris front if available, else procedural gradient + silhouette
-  const artSet = char.art && cardImgs.babes[char.id];
-  const front = artSet && artSet[sizeKey];
-  if (drawCardBitmap(front, x, y, w, h, useSmooth)) {
-    // rarity rim
-    ctx.strokeStyle = rar.color;
-    ctx.lineWidth = Math.max(2, Math.floor(w * 0.04));
-    roundRect(x + 1, y + 1, w - 2, h - 2, 6);
-    ctx.stroke();
-  } else {
-    const g = ctx.createLinearGradient(x, y, x, y + h);
-    g.addColorStop(0, `hsl(${char.hue}, 70%, 55%)`);
-    g.addColorStop(0.55, `hsl(${char.hue + 20}, 65%, 35%)`);
-    g.addColorStop(1, `hsl(${char.hue}, 50%, 18%)`);
-    roundRect(x, y, w, h, 8);
-    ctx.fillStyle = g;
-    ctx.fill();
-    ctx.strokeStyle = rar.color;
-    ctx.lineWidth = 3;
-    roundRect(x + 1.5, y + 1.5, w - 3, h - 3, 7);
-    ctx.stroke();
-    ctx.strokeStyle = "rgba(255,255,255,0.25)";
-    ctx.lineWidth = 1;
-    if (iconOnly) roundRect(x + 3, y + 3, w - 6, h - 6, 4);
-    else roundRect(x + 8, y + 8, w - 16, h - 28, 4);
-    ctx.stroke();
-    drawSilhouette(
-      x + w / 2,
-      y + h * (iconOnly ? 0.52 : 0.42),
-      Math.min(w, h) * (iconOnly ? 0.62 : 0.55),
-      char.shape,
-      "rgba(255,255,255,0.92)"
-    );
-  }
+  // Owned: procedural placeholder (Iris fronts deferred)
+  const g = ctx.createLinearGradient(x, y, x, y + h);
+  g.addColorStop(0, `hsl(${char.hue}, 70%, 55%)`);
+  g.addColorStop(0.55, `hsl(${char.hue + 20}, 65%, 35%)`);
+  g.addColorStop(1, `hsl(${char.hue}, 50%, 18%)`);
+  roundRect(x, y, w, h, 8);
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.strokeStyle = rar.color;
+  ctx.lineWidth = 3;
+  roundRect(x + 1.5, y + 1.5, w - 3, h - 3, 7);
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  ctx.lineWidth = 1;
+  if (iconOnly) roundRect(x + 3, y + 3, w - 6, h - 6, 4);
+  else roundRect(x + 8, y + 8, w - 16, h - 28, 4);
+  ctx.stroke();
+  drawSilhouette(
+    x + w / 2,
+    y + h * (iconOnly ? 0.52 : 0.42),
+    Math.min(w, h) * (iconOnly ? 0.62 : 0.55),
+    char.shape,
+    "rgba(255,255,255,0.92)"
+  );
 
   if (!iconOnly) {
     ctx.textAlign = "center";
-    // Name plate over art bottom for readability when using bitmap
-    if (front) {
-      ctx.fillStyle = "rgba(0,0,0,0.45)";
-      roundRect(x + 4, y + h - 28, w - 8, 24, 4);
-      ctx.fill();
-    }
     ctx.font = `bold ${Math.max(10, Math.floor(w * 0.12))}px sans-serif`;
     ctx.fillStyle = "#fff";
     ctx.fillText(char.name, x + w / 2, y + h - 12);

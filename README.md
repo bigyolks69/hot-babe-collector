@@ -25,7 +25,7 @@ Open `index.html` (or host the file) on iOS Safari / Android Chrome. Viewport is
 
 - **Audio**: Music Macky `cry_death` one-shot on death (WebAudio; mute with **M** / 🔊). Beeps share a master gain.
 - **Hero**: 32×48 pixel-art sprite (`art/hero/pixel/`), crisp nearest-neighbor; hitbox 18×44 (opaque inset). Idle breath / run sheet / jump / hurt / dead. Falls back to shapes if PNGs fail to load.
-- **Babe pool**: **30** babes (5 with Artist Iris card art: Mika/Sora Common, Rin Rare, Kaede Epic, Yuki Legendary). Mystery A5 cardback in-level; regular cardback for missing slots. in `BABE_POOL` (append entries to grow). Shared **3:4** aspect (`CARD_ASPECT = 72/96`).
+- **Babe pool**: **30** procedural placeholders. **Iris cardbacks**: mystery (A5) for in-level pickups; regular back for uncollected gallery/HUD/Ouch slots. Front art TBD. in `BABE_POOL` (append entries to grow). Shared **3:4** aspect (`CARD_ASPECT = 72/96`).
 - **HUD**: bottom-right 5-slot window into the sorted 30-babe list (`Babes N/30`, icon-only 3:4); slides to focus gains/losses with a brief highlight.
 - **Gallery (C)**: scrollable grid, rarity→name sort, filters All / Owned / Missing / Common / Rare / Epic / Legendary, click for detail.
 - **Collectibles**: **6** babe-coins in the level (sparse). Coins **and enemies** respawn on death.
