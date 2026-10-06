@@ -209,7 +209,7 @@ let debugHeroPose = null;
 
 function heroFrameForState() {
   const pose = debugHeroPose || (
-    state === "dead" ? "dead" :
+    (state === "dead" || state === "dying") ? "dead" :
     player.stun > 0 ? "hurt" :
     !player.onGround ? (player.vy < 0 ? "jumpUp" : "jumpFall") :
     Math.abs(player.vx) > 30 ? "run" : "idle"
@@ -273,7 +273,7 @@ function drawPlayerFallback() {
 
 function drawPlayer() {
   // Invulnerability flash (also during death we still draw)
-  if (state !== "dead" && player.flash > 0 && Math.floor(player.flash * 12) % 2 !== 0) return;
+  if (state !== "dead" && state !== "dying" && player.flash > 0 && Math.floor(player.flash * 12) % 2 !== 0) return;
   if (heroSprites.ready && drawHeroSprite()) return;
   drawPlayerFallback();
 }
@@ -851,7 +851,7 @@ const STOMP_V_HELD = JUMP_V * Math.SQRT1_2; // ~-438.4 (was full JUMP_V)
 const COYOTE = 0.1;
 const JUMP_BUF = 0.12;
 
-let state = "title"; // title | play | collection | slot | dead | win
+let state = "title"; // title | play | collection | dying | dead | win
 let collection = loadCollection();
 let hearts = 3;
 let invuln = 0;
@@ -864,6 +864,7 @@ let callouts = []; // floating text
 let slot = null; // slot machine overlay (gameplay keeps running)
 let slotQueue = 0; // pending rolls earned while a roll is already playing
 let loseAnim = null;
+let deathCry = null; // { t, dur, lostName, lostId, lostPrevCount } — in-world cry before Ouch
 let winStats = null;
 let runGained = [];   // babe ids gained this run (for win screen)
 let gallery = {
@@ -900,6 +901,7 @@ function resetLevel(full) {
   slot = null;
   slotQueue = 0;
   loseAnim = null;
+  deathCry = null;
   hearts = 3;
   invuln = 0;
   if (full) {
@@ -1022,10 +1024,27 @@ function hurtPlayer(fromX) {
   }
 }
 
+function seatPlayerForDeathCry() {
+  player.vx = 0;
+  player.vy = 0;
+  player.stun = 0;
+  player.flash = 0;
+  player.jumpBuf = 0;
+  player.fromStomp = false;
+  // Snap onto solid ground underfoot so the cry reads clearly (pit path already parked at checkpoint)
+  const top = platformTopNear(player.x, player.w, player.y + player.h);
+  if (top != null) {
+    player.y = top - player.h;
+    player.onGround = true;
+  }
+  // Keep camera locked on him
+  cameraX = Math.max(0, Math.min(player.x - W * 0.38, LEVEL_W * TILE - W));
+}
+
 function onHeartsZero() {
-  if (state === "dead") return; // single clean event — ignore re-entry
-  // Lose one random *already owned* card (pending unrevealed roll is not owned yet).
-  // Active roll + queue keep running on top of the death overlay; rewards still grant.
+  // Single clean event — ignore re-entry while already dying or on Ouch screen
+  if (state === "dying" || state === "dead") return;
+  // Lose one random *already owned* babe now (pending unrevealed roll is not owned yet).
   const owned = Object.keys(collection).filter(k => collection[k] > 0);
   let lostName = null;
   let lostId = null;
@@ -1041,11 +1060,44 @@ function onHeartsZero() {
     lostId = id;
     sfx.lose();
   }
-  loseAnim = { t: 0, name: lostName, lostId, lostPrevCount, dur: 2.2 };
+  seatPlayerForDeathCry();
+  // ~1.5s in-world cry loop before Ouch overlay; enemies frozen, no input, no re-hit
+  deathCry = { t: 0, dur: 1.5, lostName, lostId, lostPrevCount };
+  loseAnim = null;
+  invuln = 99; // belt-and-suspenders vs any stray collision
   if (lostId) focusHudOnBabe(lostId);
-  // Snap death grid so lost babe is centered (computed in drawDead from list)
-  deathGridScroll = -1; // sentinel: recompute once
+  deathGridScroll = -1;
+  state = "dying";
+}
+
+function beginOuchScreen() {
+  if (!deathCry) {
+    state = "dead";
+    loseAnim = { t: 0, name: null, lostId: null, lostPrevCount: 0, dur: 2.2 };
+    return;
+  }
+  loseAnim = {
+    t: 0,
+    name: deathCry.lostName,
+    lostId: deathCry.lostId,
+    lostPrevCount: deathCry.lostPrevCount,
+    dur: 2.2,
+  };
+  deathCry = null;
   state = "dead";
+}
+
+function updateDying(dt) {
+  if (!deathCry) { beginOuchScreen(); return; }
+  deathCry.t += dt;
+  player.vx = 0;
+  player.vy = 0;
+  // Keep camera on the crying hero
+  const target = player.x - W * 0.38;
+  cameraX += (target - cameraX) * Math.min(1, 8 * dt);
+  cameraX = Math.max(0, Math.min(cameraX, LEVEL_W * TILE - W));
+  // Enemies frozen (no update) — cannot re-hit
+  if (deathCry.t >= deathCry.dur) beginOuchScreen();
 }
 
 function spawnParticles(x, y, color, n) {
@@ -1329,6 +1381,7 @@ function updateDead(dt) {
 function resetAfterDeath() {
   hearts = 3;
   invuln = 1.5;
+  deathCry = null;
   const cp = checkpoints[checkpointIdx];
   player.x = cp.x; player.y = cp.y - player.h;
   player.vx = 0; player.vy = 0;
@@ -1508,7 +1561,7 @@ function drawWorld() {
 
 
 function drawHudLiveBabes() {
-  if (state !== "play" && state !== "dead") return;
+  if (state !== "play" && state !== "dead" && state !== "dying") return;
 
   const list = sortedBabeList();
   const cw = HUD_CW, ch = cardHeight(cw), gap = HUD_GAP;
@@ -2313,6 +2366,8 @@ function frame(dt) {
   if (state === "play") {
     updatePlay(dt);
     if (justPressed["c"]) state = "collection";
+  } else if (state === "dying") {
+    updateDying(dt);
   } else if (state === "dead") {
     updateDead(dt);
   }
@@ -2321,7 +2376,7 @@ function frame(dt) {
   drawBackground();
   drawWorld();
   drawHUD();
-  if (state === "dead") drawDead();
+  if (state === "dead") drawDead(); // Ouch only after cry delay
   // Slot overlay stays on top (including over death) so the roll remains visible
   if (slot) drawSlot();
 }
@@ -2393,6 +2448,7 @@ window.__HBC = {
     };
   },
   getLoseAnim: () => loseAnim,
+  getDeathCry: () => deathCry,
   setLoseAnimT: (v) => { if (loseAnim) loseAnim.t = v; },
   getLostXStroke: () => LOST_X_STROKE,
   getCenteredCard: () => {
