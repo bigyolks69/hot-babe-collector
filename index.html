@@ -533,30 +533,31 @@ const RARITIES = [
 ];
 const RARITY_ORDER = Object.fromEntries(RARITIES.map(r => [r.id, r.order]));
 
-// Placeholder babe defs — ids stable; rarities: 22 Common / 6 Rare / 2 Ultra Rare.
+// Babe defs — ids stable; rarities: 22 Common / 6 Rare / 2 Ultra Rare.
 // Rarity is per-babe data. Named girls (Mika, Sora, Rin, Kaede, Yuki) are always Common;
 // Rare/Ultra live only on anonymous placeholder slots until real tiers are decided.
+// `front`: Iris v3 card front (frame + name banner baked in) → art/cards/v3/card_<front>_<size>.png
 const BABE_POOL = [
-  // —— Common (22) ——
+  // —— Common (22): 5 real girls + 17 placeholders ——
+  { id: "mika",    name: "Mika",    rarity: "common", hue: 330, shape: "heart",     front: "mika" },
+  { id: "sora",    name: "Sora",    rarity: "common", hue: 55,  shape: "star",      front: "sora" },
+  { id: "rin",     name: "Rin",     rarity: "common", hue: 270, shape: "circle",    front: "rin" },
+  { id: "kaede",   name: "Kaede",   rarity: "common", hue: 18,  shape: "diamond",   front: "kaede" },
+  { id: "yuki",    name: "Yuki",    rarity: "common", hue: 205, shape: "diamond",   front: "yuki" },
   { id: "ruby",    name: "Ruby",    rarity: "common", hue: 0,   shape: "hourglass" },
   { id: "luna",    name: "Luna",    rarity: "common", hue: 220, shape: "star" },
   { id: "jade",    name: "Jade",    rarity: "common", hue: 140, shape: "diamond" },
   { id: "nova",    name: "Nova",    rarity: "common", hue: 40,  shape: "circle" },
-  { id: "vex",     name: "Vex",     rarity: "common", hue: 270, shape: "circle" },
   { id: "sol",     name: "Sol",     rarity: "common", hue: 15,  shape: "hourglass" },
-  { id: "cleo",    name: "Cleo",    rarity: "common", hue: 340, shape: "circle" },
-  { id: "daisy",   name: "Daisy",   rarity: "common", hue: 55,  shape: "star" },
   { id: "ember",   name: "Ember",   rarity: "common", hue: 18,  shape: "diamond" },
   { id: "faye",    name: "Faye",    rarity: "common", hue: 200, shape: "heart" },
   { id: "gigi",    name: "Gigi",    rarity: "common", hue: 160, shape: "hourglass" },
   { id: "haze",    name: "Haze",    rarity: "common", hue: 250, shape: "circle" },
   { id: "iris",    name: "Iris",    rarity: "common", hue: 275, shape: "star" },
   { id: "juno",    name: "Juno",    rarity: "common", hue: 95,  shape: "diamond" },
-  { id: "yuki",    name: "Yuki",    rarity: "common", hue: 205, shape: "diamond" },
   { id: "piper",   name: "Piper",   rarity: "common", hue: 35,  shape: "heart" },
   { id: "quill",   name: "Quill",   rarity: "common", hue: 210, shape: "star" },
   { id: "raven",   name: "Raven",   rarity: "common", hue: 285, shape: "diamond" },
-  { id: "sage",    name: "Sage",    rarity: "common", hue: 125, shape: "circle" },
   { id: "tess",    name: "Tess",    rarity: "common", hue: 10,  shape: "hourglass" },
   { id: "uma",     name: "Uma",     rarity: "common", hue: 310, shape: "star" },
   { id: "wren",    name: "Wren",    rarity: "common", hue: 175, shape: "heart" },
@@ -571,12 +572,13 @@ const BABE_POOL = [
   { id: "aurora",  name: "Aurora",  rarity: "ultra",  hue: 50,  shape: "star" },
   { id: "opal",    name: "Opal",    rarity: "ultra",  hue: 190, shape: "circle" },
 ];
-// Map Iris-temp ids from 58dcf8d saves back onto the restored placeholders
+// Saves: placeholders replaced by the real v3 girls carry their counts over
+// (these were where 58dcf8d's Iris-temp girls had been folded back to).
 const BABE_ID_MIGRATE = {
-  mika: "cleo",
-  sora: "daisy",
-  rin: "vex",
-  kaede: "sage",
+  cleo: "mika",
+  daisy: "sora",
+  vex: "rin",
+  sage: "kaede",
 };
 // Alias for older call sites
 const CHAR_DEFS = BABE_POOL;
@@ -970,6 +972,42 @@ function preloadRarityArt() {
 }
 function imgOk(im) { return !!(im && im.complete && im.naturalWidth > 0); }
 
+// v3 girl fronts: sm/md preloaded; lg (≈350KB each) loads on first big draw.
+const FRONT_FILES = { sm: "15x20", md: "110x147", lg: "440x588" };
+const frontImgs = {}; // id -> { sm, md, lg } (Image | "loading" | null)
+function requestFront(babe, key) {
+  const slotObj = frontImgs[babe.id] || (frontImgs[babe.id] = {});
+  if (slotObj[key] === undefined) {
+    slotObj[key] = "loading";
+    loadImg("art/cards/v3/card_" + babe.front + "_" + FRONT_FILES[key] + ".png").then(im => { slotObj[key] = im; });
+  }
+  const im = slotObj[key];
+  return imgOk(im) ? im : null;
+}
+function preloadFronts() {
+  const jobs = [];
+  for (const b of BABE_POOL) {
+    if (!b.front) continue;
+    for (const key of ["sm", "md"]) {
+      const slotObj = frontImgs[b.id] || (frontImgs[b.id] = {});
+      slotObj[key] = "loading";
+      jobs.push(loadImg("art/cards/v3/card_" + b.front + "_" + FRONT_FILES[key] + ".png").then(im => { slotObj[key] = im; }));
+    }
+  }
+  return Promise.all(jobs);
+}
+/** Draw a v3 front as-is (no extra frame). Returns false if not loaded yet. */
+function drawFrontCard(babe, x, y, w, h, sizeKey) {
+  // Painted fronts: never upscale the 110 — anything wider than 110px uses the 440
+  if (sizeKey !== "sm") sizeKey = Math.floor(w) <= 110 ? "md" : "lg";
+  let im = requestFront(babe, sizeKey);
+  if (!im && sizeKey === "lg") im = requestFront(babe, "md"); // while 440 streams in
+  if (!im) return false;
+  // 15x20 face crop: nearest-neighbour; bigger: smooth only when downscaling
+  const smooth = sizeKey !== "sm" && Math.floor(w) < im.naturalWidth;
+  return drawCardBitmap(im, x, y, w, h, smooth);
+}
+
 async function preloadCardArt() {
   const sizes = [
     ["sm", "15x20"],
@@ -982,6 +1020,7 @@ async function preloadCardArt() {
     jobs.push(loadImg("art/cards/cardback/normal/cardback_" + file + ".png").then(im => { cardImgs.normal[key] = im; }));
   }
   jobs.push(preloadRarityArt());
+  jobs.push(preloadFronts());
   await Promise.all(jobs);
   cardImgs.ready = true;
   return true;
@@ -1109,6 +1148,12 @@ function drawCard(char, x, y, w, h, opts) {
       ctx.fillStyle = "#666";
       ctx.fillText("???", x + w / 2, y + h - 12);
     }
+    return;
+  }
+
+  // Owned real girl: v3 front as-is (frame + name banner baked in)
+  if (char.front && drawFrontCard(char, x, y, w, h, sizeKey)) {
+    drawCardBadges(char, x, y, w, h, opts, iconOnly);
     return;
   }
 
