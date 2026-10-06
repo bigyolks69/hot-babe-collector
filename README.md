@@ -16,7 +16,7 @@ Single-file game: open `index.html` in Chrome or Safari (double-click works offl
 | Start | Enter / Space on title |
 | Restart (after win) | R or Enter |
 
-On touch devices, large on-screen buttons appear (← → jump, C gallery). Landscape recommended (portrait shows a rotate hint). Tap title/win to start/restart; gallery supports swipe scroll and tap filters.
+On touch devices, large on-screen buttons appear (← → jump, C gallery). Portrait and landscape both work — title screen notes you can use either. Tap title/win to start/restart; gallery supports swipe scroll and tap filters.
 
 ### Mobile / share link
 Open `index.html` (or host the file) on iOS Safari / Android Chrome. Viewport is locked (no zoom); WebAudio unlocks on first tap; optional fullscreen button. Add to Home Screen friendly (`apple-mobile-web-app-capable`).
@@ -28,7 +28,7 @@ Open `index.html` (or host the file) on iOS Safari / Android Chrome. Viewport is
 - **Gallery (C)**: scrollable grid, rarity→name sort, filters All / Owned / Missing / Common / Rare / Epic / Legendary, click for detail.
 - **Collectibles**: **6** babe-coins in the level (sparse). Coins **and enemies** respawn on death.
 - **Coins → babes**: ~1.2s slot roll overlay (gameplay continues); queued pickups; pre-planted result (no snap).
-- **Hearts**: 3 HP. Hit = knockback (~290 px/s away, vy −280) + 0.25s stun + invuln flash. Stomp from above.
+- **Hearts**: 3 HP. Hit = knockback (~290 px/s away, vy −280) + 0.25s stun + invuln flash. Stomp from above = bounce (STOMP_V ≈ −339 / held ≈ −438; half prior apex height) + brief grace. Enemies gravity-snap to platforms and turn at ledges; respawn with coins on death.
 - **Death**: gallery-style scrolled grid (rarity→name) with the lost babe crossed by a pen-stroke red X; owned count in header. Pit = full wipe + lose one babe.
 - **Win**: babes gained this run (scrollable row) + totals.
 - **Save**: `hbc_collection_v1` counts map; also writes `hbc_collection_v2` wrapper (v1 still loaded/migrated).

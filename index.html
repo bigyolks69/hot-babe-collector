@@ -105,34 +105,15 @@
   }
   #fsBtn.show { display: block; }
   #fsBtn:active { background: rgba(255,120,180,0.28); color: rgba(255,255,255,0.55); border-color: rgba(255,255,255,0.45); }
-  #rotateHint {
-    display: none;
-    position: absolute;
-    inset: 0;
-    z-index: 20;
-    background: rgba(18,8,24,0.92);
-    color: #ffb0d0;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: 24px;
-    pointer-events: auto;
-    touch-action: none;
-  }
-  #rotateHint.show { display: flex; }
-  #rotateHint h2 { color: #ff5a9a; font-size: 22px; margin-bottom: 12px; }
-  #rotateHint p { font-size: 15px; max-width: 280px; line-height: 1.4; }
-  #rotateHint button {
-    margin-top: 18px;
-    padding: 12px 20px;
-    border-radius: 10px;
-    border: 2px solid #ff8ec8;
-    background: rgba(255,90,154,0.35);
-    color: #fff;
-    font-weight: bold;
-    font-size: 15px;
-    touch-action: none;
+  /* Portrait: keep controls usable without blocking the letterboxed canvas */
+  @media (orientation: portrait) {
+    .tbtn { width: 72px; height: 72px; font-size: 24px; }
+    #tJump { width: 84px; height: 84px; font-size: 26px; }
+    #tLeft  { left: max(12px, env(safe-area-inset-left)); bottom: max(18px, env(safe-area-inset-bottom)); }
+    #tRight { left: calc(max(12px, env(safe-area-inset-left)) + 78px); bottom: max(18px, env(safe-area-inset-bottom)); }
+    #tJump  { right: max(12px, env(safe-area-inset-right)); bottom: max(18px, env(safe-area-inset-bottom)); }
+    #tColl  { left: max(12px, env(safe-area-inset-left)); top: max(12px, env(safe-area-inset-top)); width: 52px; height: 52px; font-size: 16px; }
+    #fsBtn  { right: max(10px, env(safe-area-inset-right)); top: max(10px, env(safe-area-inset-top)); font-size: 11px; padding: 6px 10px; }
   }
 </style>
 </head>
@@ -146,11 +127,6 @@
     <button type="button" class="tbtn" id="tColl" aria-label="Babe gallery">C</button>
   </div>
   <button type="button" id="fsBtn" aria-label="Fullscreen">⛶ Full</button>
-  <div id="rotateHint">
-    <h2>Rotate your phone</h2>
-    <p>Hot Babe Collector plays best in landscape. Rotate for bigger controls — or tap below to play in portrait anyway.</p>
-    <button type="button" id="playPortrait">Play in portrait</button>
-  </div>
 </div>
 <script>
 "use strict";
@@ -321,8 +297,6 @@ window.addEventListener("wheel", e => {
 const isTouch = ("ontouchstart" in window) || navigator.maxTouchPoints > 0;
 const touchEl = document.getElementById("touch");
 const fsBtn = document.getElementById("fsBtn");
-const rotateHint = document.getElementById("rotateHint");
-let allowPortraitPlay = false;
 let gallerySwipeY0 = null;
 let gallerySwipeScroll0 = 0;
 
@@ -444,22 +418,8 @@ fsBtn.addEventListener("click", e => {
   if (!document.fullscreenElement && root.requestFullscreen) root.requestFullscreen().catch(() => {});
   else if (document.exitFullscreen) document.exitFullscreen();
 });
-document.getElementById("playPortrait").addEventListener("click", e => {
-  e.preventDefault();
-  allowPortraitPlay = true;
-  updateRotateHint();
-  ensureAudio();
-});
-
-function updateRotateHint() {
-  if (!isTouch) { rotateHint.classList.remove("show"); return; }
-  const portrait = window.innerHeight > window.innerWidth;
-  if (portrait && !allowPortraitPlay) rotateHint.classList.add("show");
-  else rotateHint.classList.remove("show");
-}
 window.addEventListener("orientationchange", () => {
-  allowPortraitPlay = false;
-  setTimeout(() => { fit(); updateRotateHint(); }, 200);
+  setTimeout(() => fit(), 200);
 });
 
 // ---------- Drawing helpers ----------
@@ -712,15 +672,25 @@ function makeCoins() {
 }
 
 // Enemies: type 'walker' | 'hopper'
+function enemyOnPlat(type, xTile, platY, w, h, extra) {
+  const top = platY * TILE;
+  return Object.assign({
+    type, x: xTile * TILE, y: top - h, w, h,
+    vx: 0, vy: 0, dir: 1, alive: true,
+    prevX: xTile * TILE, prevY: top - h,
+  }, extra || {});
+}
+
 function makeEnemies() {
+  // Seated on real platform tops; patrol ranges stay on that surface
   return [
-    { type:"walker", x:10*TILE, y:14*TILE, w:28, h:28, vx:60, dir:1, minX:2*TILE, maxX:16*TILE, alive:true },
-    { type:"walker", x:44*TILE, y:14*TILE, w:28, h:28, vx:70, dir:-1, minX:40*TILE, maxX:50*TILE, alive:true },
-    { type:"hopper", x:30*TILE, y:11*TILE, w:26, h:26, vx:40, dir:1, vy:0, groundY:13*TILE-26, minX:27*TILE, maxX:36*TILE, alive:true, hopT:0 },
-    { type:"walker", x:86*TILE, y:14*TILE, w:28, h:28, vx:80, dir:1, minX:80*TILE, maxX:94*TILE, alive:true },
-    { type:"hopper", x:71*TILE, y:11*TILE-26, w:26, h:26, vx:30, dir:-1, vy:0, groundY:11*TILE-26, minX:69*TILE, maxX:72*TILE, alive:true, hopT:0.5 },
-    { type:"walker", x:110*TILE, y:13*TILE-28, w:28, h:28, vx:55, dir:1, minX:109*TILE, maxX:113*TILE-4, alive:true },
-    { type:"hopper", x:104*TILE, y:15*TILE-26, w:26, h:26, vx:35, dir:1, vy:0, groundY:15*TILE-26, minX:99*TILE, maxX:106*TILE, alive:true, hopT:1.2 },
+    enemyOnPlat("walker", 10, 15, 28, 28, { vx: 60, dir: 1, minX: 2 * TILE, maxX: 16 * TILE }),
+    enemyOnPlat("walker", 44, 15, 28, 28, { vx: 70, dir: -1, minX: 40 * TILE, maxX: 50 * TILE }),
+    enemyOnPlat("hopper", 34, 13, 26, 26, { vx: 40, dir: 1, minX: 33 * TILE, maxX: 39 * TILE, hopT: 0 }),
+    enemyOnPlat("walker", 86, 15, 28, 28, { vx: 80, dir: 1, minX: 80 * TILE, maxX: 94 * TILE }),
+    enemyOnPlat("hopper", 70, 11, 26, 26, { vx: 30, dir: -1, minX: 69 * TILE, maxX: 72 * TILE, hopT: 0.5 }),
+    enemyOnPlat("walker", 110, 13, 28, 28, { vx: 55, dir: 1, minX: 109 * TILE, maxX: 114 * TILE - 4 }),
+    enemyOnPlat("hopper", 102, 15, 26, 26, { vx: 35, dir: 1, minX: 99 * TILE, maxX: 106 * TILE, hopT: 1.2 }),
   ];
 }
 
@@ -733,6 +703,9 @@ const MOVE_MAX = 260;
 const FRICTION = 1800;
 const JUMP_V = -620;
 const JUMP_CUT = 0.45;
+// Stomp bounce: HALF prior apex height → multiply |v| by √(1/2)
+const STOMP_V = -480 * Math.SQRT1_2;       // ~-339.4 (was -480)
+const STOMP_V_HELD = JUMP_V * Math.SQRT1_2; // ~-438.4 (was full JUMP_V)
 // Derived (full held jump): maxJumpH = v^2/(2g) ≈ 87.4px (~2.73 tiles).
 // Level design uses ≤2 tile rises (~64px ≈ 73% of max) for comfort.
 const COYOTE = 0.1;
@@ -776,6 +749,7 @@ const player = {
   vx: 0, vy: 0, onGround: false,
   facing: 1, coyote: 0, jumpBuf: 0,
   anim: 0, flash: 0, stun: 0, stompGrace: 0, fromStomp: false,
+  prevX: 64, prevY: 14 * TILE - 40,
 };
 
 function resetLevel(full) {
@@ -807,6 +781,7 @@ function resetLevel(full) {
   player.vx = 0; player.vy = 0;
   player.onGround = false;
   player.coyote = 0; player.jumpBuf = 0; player.stun = 0; player.stompGrace = 0; player.fromStomp = false;
+  player.prevX = player.x; player.prevY = player.y;
   cameraX = Math.max(0, player.x - W*0.35);
 }
 
@@ -850,6 +825,30 @@ function resolvePlayer(dt) {
 function groundUnder(px, feetY) {
   // Thin probe just below feet — true if a platform would catch a landing
   return !!solidAt(px, feetY, player.w, 6);
+}
+
+/** Platform top near feet supporting [x,x+w]; prefers the highest (smallest Y) match. */
+function platformTopNear(x, w, feetY) {
+  let best = null;
+  for (const p of platforms) {
+    const px = p.x * TILE, py = p.y * TILE, pw = p.w * TILE;
+    const overlap = Math.min(x + w, px + pw) - Math.max(x, px);
+    if (overlap < 6) continue;
+    if (py >= feetY - 4 && py <= feetY + 48) {
+      if (best == null || py < best) best = py;
+    }
+  }
+  if (best == null) {
+    for (const p of platforms) {
+      const px = p.x * TILE, py = p.y * TILE, pw = p.w * TILE;
+      const overlap = Math.min(x + w, px + pw) - Math.max(x, px);
+      if (overlap < 6) continue;
+      if (Math.abs(py - feetY) <= 8) {
+        if (best == null || py < best) best = py;
+      }
+    }
+  }
+  return best;
 }
 
 function hurtPlayer(fromX) {
@@ -1071,40 +1070,57 @@ function updatePlay(dt) {
     }
   }
 
-  // enemies
+  // enemies — gravity + ledge turns (never float mid-air)
   for (const e of enemies) {
     if (!e.alive) continue;
-    if (e.type === "walker") {
-      e.x += e.vx * e.dir * dt;
-      if (e.x < e.minX) { e.x = e.minX; e.dir = 1; }
-      if (e.x + e.w > e.maxX) { e.x = e.maxX - e.w; e.dir = -1; }
-    } else if (e.type === "hopper") {
-      e.hopT += dt;
-      e.x += e.vx * e.dir * dt;
-      if (e.x < e.minX) { e.x = e.minX; e.dir = 1; }
-      if (e.x + e.w > e.maxX) { e.x = e.maxX - e.w; e.dir = -1; }
-      e.vy += GRAV * dt * 0.85;
-      e.y += e.vy * dt;
-      if (e.y >= e.groundY) {
-        e.y = e.groundY;
-        e.vy = 0;
+    e.prevX = e.x;
+    e.prevY = e.y;
+
+    if (e.x < e.minX) { e.x = e.minX; e.dir = 1; }
+    if (e.x + e.w > e.maxX) { e.x = e.maxX - e.w; e.dir = -1; }
+
+    const feetY = e.y + e.h;
+    const aheadX = e.dir > 0 ? e.x + e.w - 2 : e.x - 4;
+    const aheadTop = platformTopNear(aheadX, 6, feetY);
+    if (aheadTop == null || Math.abs(aheadTop - feetY) > 10) e.dir *= -1;
+
+    e.x += e.vx * e.dir * dt;
+    if (e.x < e.minX) { e.x = e.minX; e.dir = 1; }
+    if (e.x + e.w > e.maxX) { e.x = e.maxX - e.w; e.dir = -1; }
+
+    e.vy = (e.vy || 0) + GRAV * dt * (e.type === "hopper" ? 0.85 : 1);
+    e.y += e.vy * dt;
+
+    const top = platformTopNear(e.x, e.w, e.y + e.h);
+    const onGround = top != null && (e.y + e.h) >= top - 1 && (e.y + e.h) <= top + 18 && e.vy >= 0;
+    if (onGround) {
+      e.y = top - e.h;
+      e.vy = 0;
+      if (e.type === "hopper") {
+        e.hopT = (e.hopT || 0) + dt;
         if (e.hopT > 1.1) { e.vy = -520; e.hopT = 0; }
       }
     }
 
     if (!aabb(player, e)) continue;
-    // Mario-style stomp: falling onto top → kill + bounce (no same-frame re-hit)
-    const stomping = player.vy > 40 && (player.y + player.h) <= (e.y + e.h * 0.55);
+
+    // Stomp if player was/is above (prev feet vs prev enemy top), even if enemy jumps up
+    const STOMP_TOL = 8;
+    const prevPlayerBottom = (player.prevY != null ? player.prevY : player.y) + player.h;
+    const prevEnemyTop = e.prevY != null ? e.prevY : e.y;
+    const fromAbove = prevPlayerBottom <= prevEnemyTop + STOMP_TOL;
+    // Vertical-dominant overlap with player clearly above (hopper jump-into-feet)
+    const playerAbove = player.y + player.h <= e.y + e.h * 0.55 && player.y < e.y;
+    const stomping = fromAbove || playerAbove;
+
     if (stomping) {
       e.alive = false;
-      // Sit on its head so we don't re-overlap as a side-hit next frame
       player.y = e.y - player.h;
       player.onGround = false;
-      // Bounce: solid pop; hold jump for full jump height
       const jumpHeld = keys[" "] || keys["arrowup"] || keys["w"];
-      player.vy = jumpHeld ? JUMP_V : -480;
-      player.stompGrace = 0.12; // blocks hurt; allows bounce-chain stomps
-      player.fromStomp = true;  // exempt JUMP_CUT until apex
+      player.vy = jumpHeld ? STOMP_V_HELD : STOMP_V;
+      player.stompGrace = 0.12;
+      player.fromStomp = true;
       player.jumpBuf = 0;
       sfx.stomp();
       spawnParticles(e.x + e.w/2, e.y + e.h/2, e.type === "hopper" ? "#7dff9a" : "#ff8a5b", 12);
@@ -1112,6 +1128,9 @@ function updatePlay(dt) {
       hurtPlayer(e.x + e.w/2);
     }
   }
+
+  player.prevY = player.y;
+  player.prevX = player.x;
 
   // goal
   if (aabb(player, goal)) {
@@ -1176,6 +1195,7 @@ function resetAfterDeath() {
   player.stun = 0;
   player.stompGrace = 0;
   player.fromStomp = false;
+  player.prevX = player.x; player.prevY = player.y;
   // Respawn coins AND enemies at original positions/state (same as level start)
   coins = makeCoins();
   enemies = makeEnemies();
@@ -1377,7 +1397,9 @@ function drawHudLiveBabes() {
   const panelW = pad * 2 + HUD_SLOTS * cw + (HUD_SLOTS - 1) * gap;
   const panelH = pad + counterH + ch + pad;
   const margin = 10;
-  const lift = isTouch ? 130 : 18;
+  // Touch: lift tray above on-screen jump; portrait needs less canvas-space lift (letterbox absorbs chrome)
+  const portrait = window.innerHeight > window.innerWidth;
+  const lift = isTouch ? (portrait ? 78 : 130) : 18;
   const panelX = W - panelW - margin;
   const panelY = H - panelH - lift;
   const step = cw + gap;
@@ -1832,6 +1854,11 @@ function drawTitle() {
   ctx.fillStyle = "#999";
   ctx.font = "12px sans-serif";
   ctx.fillText("←→ / A D move  •  Space / W / ↑ jump  •  C babe gallery", W/2, 420);
+  if (isTouch) {
+    ctx.fillStyle = "#c8a0b8";
+    ctx.font = "13px sans-serif";
+    ctx.fillText("Play in portrait or landscape — whichever you prefer", W/2, 458);
+  }
 }
 
 // Compact collection strip for death / win overlays
@@ -2194,11 +2221,9 @@ function fit() {
   const cssH = Math.max(1, Math.floor(H * r));
   canvas.style.width = cssW + "px";
   canvas.style.height = cssH + "px";
-  updateRotateHint();
 }
 window.addEventListener("resize", () => { fit(); });
 fit();
-updateRotateHint();
 
 resetLevel(true);
 state = "title";
