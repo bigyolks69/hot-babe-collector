@@ -1038,7 +1038,7 @@ function drawWorld() {
 
 // Tiny always-on babe tray (gameplay only) — ~1/8 area of death mini panel, CARD_ASPECT locked
 function drawHudLiveBabes() {
-  if (state !== "play") return;
+  if (state !== "play" && state !== "dead") return;
 
   const cols = 6, rows = 2;
   const gapX = 3, gapY = 3;
@@ -1082,12 +1082,23 @@ function drawHudLiveBabes() {
     const y = panelY + padTop + row * (ch + gapY);
     const char = CHAR_DEFS[i];
     const count = collection[char.id] || 0;
-    ctx.globalAlpha = count > 0 ? 0.95 : 0.55;
-    drawCard(char, x, y, cw, ch, {
-      locked: count === 0,
-      count: count > 1 ? count : null,
-      iconOnly: true,
-    });
+    const isLost = state === "dead" && loseAnim && loseAnim.lostId === char.id;
+    ctx.globalAlpha = (count > 0 || isLost) ? 0.95 : 0.55;
+    if (isLost) {
+      const displayCount = count > 0 ? count : (loseAnim.lostPrevCount > 1 ? loseAnim.lostPrevCount - 1 : null);
+      drawCard(char, x, y, cw, ch, {
+        locked: false,
+        count: displayCount && displayCount > 1 ? displayCount : null,
+        iconOnly: true,
+      });
+      drawLostBabeX(x, y, cw, ch, loseAnim.t);
+    } else {
+      drawCard(char, x, y, cw, ch, {
+        locked: count === 0,
+        count: count > 1 ? count : null,
+        iconOnly: true,
+      });
+    }
   }
   ctx.restore();
 }
@@ -1275,6 +1286,36 @@ function drawTitle() {
 }
 
 // Compact collection strip for death / win overlays
+// Bold red X: pen-stroke draw — stroke1 then stroke2, ~0.15s each, no delay, then hold
+const LOST_X_STROKE = 0.15;
+function drawLostBabeX(x, y, w, h, t) {
+  const inset = Math.max(3, w * 0.12);
+  const x0 = x + inset, y0 = y + inset;
+  const x1 = x + w - inset, y1 = y + h - inset;
+  ctx.save();
+  ctx.strokeStyle = "#ff2030";
+  ctx.lineWidth = Math.max(3, Math.min(8, w * 0.14));
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  // Stroke 1 grows TL → BR
+  const a = Math.max(0, Math.min(1, t / LOST_X_STROKE));
+  if (a > 0) {
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x0 + (x1 - x0) * a, y0 + (y1 - y0) * a);
+    ctx.stroke();
+  }
+  // Stroke 2 grows TR → BL after stroke 1 finishes
+  const b = Math.max(0, Math.min(1, (t - LOST_X_STROKE) / LOST_X_STROKE));
+  if (b > 0) {
+    ctx.beginPath();
+    ctx.moveTo(x1, y0);
+    ctx.lineTo(x1 + (x0 - x1) * b, y0 + (y1 - y0) * b);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function layoutMiniCollection(panelW, maxPanelH) {
   const cols = 6, rows = 2;
   const gapX = 8, gapY = 8;
@@ -1340,40 +1381,14 @@ function drawMiniCollection(opts) {
 
     ctx.save();
     if (isLost) {
-      const u = Math.min(1, animT / animDur);
-      const pulse = 0.55 + 0.45 * Math.sin(animT * 10);
-      ctx.globalAlpha = Math.max(0.15, 1 - u * 0.85);
-      if (count <= 0 && lostPrevCount >= 1) {
-        drawCard(char, x, y, cw, ch, {
-          locked: false,
-          count: lostPrevCount > 1 ? lostPrevCount - 1 : null,
-          showRarity: false,
-          glow: pulse,
-        });
-        ctx.globalAlpha = Math.min(1, 0.4 + u);
-        ctx.fillStyle = "rgba(180,20,40,0.55)";
-        roundRect(x, y, cw, ch, 6);
-        ctx.fill();
-        ctx.fillStyle = "#ffe66d";
-        ctx.font = "bold " + Math.max(9, Math.floor(cw * 0.22)) + "px sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText("LOST", x + cw / 2, y + ch / 2 + 4);
-      } else {
-        drawCard(char, x, y, cw, ch, {
-          locked: false,
-          count: count > 0 ? count : null,
-          showRarity: false,
-          glow: pulse,
-        });
-        ctx.strokeStyle = "#ffe66d";
-        ctx.lineWidth = 2;
-        roundRect(x - 1, y - 1, cw + 2, ch + 2, 7);
-        ctx.stroke();
-        ctx.fillStyle = "#ffe66d";
-        ctx.font = "bold 9px sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText("-1", x + cw / 2, y + 11);
-      }
+      // Keep babe colored as pre-loss; pen-stroke red X draws in (~0.15s × 2)
+      const displayCount = count > 0 ? count : (lostPrevCount > 1 ? lostPrevCount - 1 : null);
+      drawCard(char, x, y, cw, ch, {
+        locked: false,
+        count: displayCount,
+        showRarity: false,
+      });
+      drawLostBabeX(x, y, cw, ch, animT);
     } else {
       drawCard(char, x, y, cw, ch, {
         locked: count === 0,
@@ -1564,6 +1579,9 @@ window.__HBC = {
       hudLive: { w: 30, h: cardHeight(30), ratio: 30 / cardHeight(30) },
     };
   },
+  getLoseAnim: () => loseAnim,
+  setLoseAnimT: (v) => { if (loseAnim) loseAnim.t = v; },
+  getLostXStroke: () => LOST_X_STROKE,
   getCenteredCard: () => {
     if (!slot) return null;
     const idx = Math.round(slot.offset);
