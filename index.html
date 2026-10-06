@@ -1764,6 +1764,10 @@ syncRecent();
 const COMPLETE_KEY = "hbc_complete_v1";
 const CONGRATS_TEXT = "Congrats! You completed the collection! Life doesn't suck anymore.";
 const CONGRATS_GUARD = 0.4; // input ignored this long after it appears (held jump etc.)
+const CONGRATS_IMG_SRC = "art/ui/congrats_all30.jpg"; // Iris all-30 group pic (1280×720, 16:9)
+const congratsImg = new Image();
+congratsImg.onerror = () => console.warn("[HBC] congrats group pic failed: " + CONGRATS_IMG_SRC);
+congratsImg.src = CONGRATS_IMG_SRC;
 let collectionCompleteFlag = false;
 try { collectionCompleteFlag = localStorage.getItem(COMPLETE_KEY) === "1"; } catch (e) {}
 let congrats = null; // { t, sparks }
@@ -4174,32 +4178,44 @@ function frame(dt) {
 function congratsLayout() {
   const r = canvas.getBoundingClientRect();
   const scale = r.width > 0 ? r.width / W : 1;
-  const bw = Math.min(600, Math.max(240, 200 / scale)), bh = Math.min(140, Math.max(60, 56 / scale));
-  const pw = 760, ph = 196 + bh + 26;
-  const px = (W - pw) / 2, py = Math.max(8, (H - ph) / 2);
-  return { pw, ph, px, py, btn: { x: W / 2 - bw / 2, y: py + 196, w: bw, h: bh } };
+  // Continue stays ≥ ~200×56 CSS px so it is tappable on a small phone canvas
+  const bw = Math.min(560, Math.max(240, 200 / scale)), bh = Math.min(140, Math.max(60, 56 / scale));
+  const marginX = 20, marginY = 8, pad = 14, gap = 8, titleH = 62;
+  const pw = W - marginX * 2;
+  const phMax = H - marginY * 2;
+  const imgAreaW = pw - pad * 2;
+  const imgAreaH = Math.max(120, phMax - titleH - bh - pad * 2 - gap * 3);
+  // Contain 16:9 inside the image area (source is 1280×720)
+  const AR = 16 / 9;
+  let iw = imgAreaW, ih = iw / AR;
+  if (ih > imgAreaH) { ih = imgAreaH; iw = ih * AR; }
+  const ph = Math.min(phMax, titleH + ih + bh + pad * 2 + gap * 3);
+  const px = (W - pw) / 2, py = Math.max(marginY, (H - ph) / 2);
+  const img = { x: px + (pw - iw) / 2, y: py + pad + titleH + gap, w: iw, h: ih };
+  const btn = { x: W / 2 - bw / 2, y: py + ph - pad - bh, w: bw, h: bh };
+  return { pw, ph, px, py, btn, img, titleH, pad };
 }
 
 function drawCongrats(dt) {
   const c = congrats, t = c.t;
   const a = Math.min(1, t / 0.35);
-  const L = congratsLayout(), { pw, ph, px, py, btn } = L;
+  const L = congratsLayout(), { pw, ph, px, py, btn, img } = L;
   ctx.save();
   ctx.globalAlpha = a;
-  ctx.fillStyle = "rgba(12,4,26,0.72)";
+  ctx.fillStyle = "rgba(12,4,26,0.78)";
   ctx.fillRect(0, 0, W, H);
-  // sparkles + drifting confetti
+  // sparkles behind the panel
   for (const sp of c.sparks) {
     sp.y += sp.vy * dt; if (sp.y > H + 8) { sp.y = -8; sp.x = Math.random() * W; }
     const tw = 0.4 + 0.6 * Math.abs(Math.sin(t * 3 + sp.p));
     ctx.globalAlpha = a * tw;
     ctx.fillStyle = `hsl(${(sp.hue + t * 60) % 360}, 100%, 75%)`;
-    const r = sp.s;
-    ctx.fillRect(sp.x - r, sp.y - 0.5, r * 2, 1.5);
-    ctx.fillRect(sp.x - 0.5, sp.y - r, 1.5, r * 2);
+    const rr = sp.s;
+    ctx.fillRect(sp.x - rr, sp.y - 0.5, rr * 2, 1.5);
+    ctx.fillRect(sp.x - 0.5, sp.y - rr, 1.5, rr * 2);
   }
   ctx.globalAlpha = a;
-  const pop = 1 + 0.06 * Math.max(0, 1 - t / 0.35);
+  const pop = 1 + 0.05 * Math.max(0, 1 - t / 0.35);
   ctx.translate(W / 2, py + ph / 2); ctx.scale(pop, pop); ctx.translate(-W / 2, -(py + ph / 2));
   const bg = ctx.createLinearGradient(px, py, px + pw, py + ph);
   bg.addColorStop(0, "#3a0f4f"); bg.addColorStop(1, "#5a1640");
@@ -4209,27 +4225,39 @@ function drawCongrats(dt) {
   for (let i = 0; i <= 6; i++) bd.addColorStop(i / 6, `hsl(${(i * 60 + t * 120) % 360}, 100%, 65%)`);
   ctx.strokeStyle = bd; ctx.lineWidth = 4;
   roundRect(px, py, pw, ph, 18); ctx.stroke();
-  // text (exact copy, split over two lines)
+  // Title (exact copy, two lines)
   const split = CONGRATS_TEXT.indexOf("Life");
   ctx.textAlign = "center";
-  ctx.shadowColor = "rgba(255,90,154,0.8)"; ctx.shadowBlur = 16;
+  ctx.shadowColor = "rgba(255,90,154,0.8)"; ctx.shadowBlur = 14;
   ctx.fillStyle = "#ffe66d";
-  ctx.font = "bold 32px sans-serif";
-  ctx.fillText(CONGRATS_TEXT.slice(0, split).trim(), W / 2, py + 54);
+  ctx.font = "bold 26px sans-serif";
+  ctx.fillText(CONGRATS_TEXT.slice(0, split).trim(), W / 2, py + 28);
   ctx.fillStyle = "#ff8ec8";
-  ctx.font = "bold 28px sans-serif";
-  ctx.fillText(CONGRATS_TEXT.slice(split), W / 2, py + 94);
+  ctx.font = "bold 22px sans-serif";
+  ctx.fillText(CONGRATS_TEXT.slice(split), W / 2, py + 54);
   ctx.shadowBlur = 0;
-  // all 30 babes as tiny 3:4 faces
-  const cw = 20, chh = cardHeight(cw), gap = 3, rowW = BABE_POOL.length * (cw + gap) - gap;
-  const x0 = W / 2 - rowW / 2;
-  BABE_POOL.forEach((b, i) => {
-    const bob = Math.sin(t * 4 + i * 0.5) * 3;
-    drawCard(b, x0 + i * (cw + gap), py + 114 + bob, cw, chh, { iconOnly: true });
-  });
-  ctx.fillStyle = "#fff";
-  ctx.font = "bold 15px sans-serif";
-  ctx.fillText("All " + BABE_POOL.length + " babes collected", W / 2, py + 174);
+  // Iris all-30 group pic — draw contain into the 16:9 slot (letterbox only if aspect drifts)
+  if (imgOk(congratsImg)) {
+    const sw = congratsImg.naturalWidth, sh = congratsImg.naturalHeight;
+    const sAr = sw / sh, dAr = img.w / img.h;
+    let sx = 0, sy = 0, sW = sw, sH = sh, dx = img.x, dy = img.y, dW = img.w, dH = img.h;
+    if (Math.abs(sAr - dAr) > 0.01) {
+      // contain: letterbox inside dest
+      if (sAr > dAr) { dH = img.w / sAr; dy = img.y + (img.h - dH) / 2; }
+      else { dW = img.h * sAr; dx = img.x + (img.w - dW) / 2; }
+      ctx.fillStyle = "#1a0a28";
+      ctx.fillRect(img.x, img.y, img.w, img.h);
+    }
+    ctx.drawImage(congratsImg, sx, sy, sW, sH, dx, dy, dW, dH);
+    ctx.strokeStyle = "rgba(255,230,109,0.85)"; ctx.lineWidth = 2;
+    ctx.strokeRect(img.x - 0.5, img.y - 0.5, img.w + 1, img.h + 1);
+  } else {
+    // Fallback while loading / if missing: soft placeholder + tiny face row
+    ctx.fillStyle = "#2a1040";
+    ctx.fillRect(img.x, img.y, img.w, img.h);
+    ctx.fillStyle = "#ff8ec8"; ctx.font = "bold 16px sans-serif";
+    ctx.fillText("All " + BABE_POOL.length + " babes", W / 2, img.y + img.h / 2);
+  }
   // Continue button (dimmed during the short input guard)
   const ready = t >= CONGRATS_GUARD;
   const glow = ready ? 0.5 + 0.5 * Math.sin(t * 4) : 0;
@@ -4243,7 +4271,7 @@ function drawCongrats(dt) {
   ctx.strokeStyle = "#ffe66d"; ctx.lineWidth = 3;
   roundRect(btn.x, btn.y, btn.w, btn.h, Math.min(22, btn.h / 2)); ctx.stroke();
   ctx.fillStyle = "#fff";
-  ctx.font = "bold " + Math.round(Math.min(56, btn.h * 0.45)) + "px sans-serif";
+  ctx.font = "bold " + Math.round(Math.min(48, btn.h * 0.45)) + "px sans-serif";
   ctx.textBaseline = "middle";
   ctx.fillText(isTouch ? "Continue" : "Continue  ⏎", W / 2, btn.y + btn.h / 2 + 1);
   ctx.textBaseline = "alphabetic";
@@ -4431,7 +4459,7 @@ window.__HBC = {
   getResetButtons: () => { if (!resetConfirm) return null; const L = resetConfirmLayout(), r = canvas.getBoundingClientRect(), s = r.width / W;
     const toClient = (b) => ({ x: r.left + b.x * s, y: r.top + b.y * s, w: b.w * s, h: b.h * s });
     return { reset: toClient(L.resetBtn), cancel: toClient(L.cancelBtn), gallery: (() => { const g = galleryResetBtn(); return toClient(g); })() }; },
-  getCongrats: () => congrats && { t: congrats.t, text: CONGRATS_TEXT },
+  getCongrats: () => congrats && { t: congrats.t, text: CONGRATS_TEXT, hasImg: imgOk(congratsImg), img: congratsLayout().img },
   getCongratsButton: () => { if (!congrats) return null; const b = congratsLayout().btn, r = canvas.getBoundingClientRect(), s = r.width / W;
     return { canvas: b, client: { x: r.left + b.x * s, y: r.top + b.y * s, w: b.w * s, h: b.h * s } }; },
   isCollectionComplete: () => collectionCompleteFlag,

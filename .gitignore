@@ -228,3 +228,7 @@ audio/**
 !art/enemies/pixel/monsters_sheet.png
 !art/enemies/pixel/_scripts/
 !art/enemies/pixel/_scripts/make_monsters.py
+
+# Congrats celebration (Iris all-30 group pic)
+!art/ui/
+!art/ui/congrats_all30.jpg
