@@ -501,7 +501,7 @@ const player = {
   x: 64, y: 14*TILE - 40, w: 24, h: 36,
   vx: 0, vy: 0, onGround: false,
   facing: 1, coyote: 0, jumpBuf: 0,
-  anim: 0, flash: 0,
+  anim: 0, flash: 0, stun: 0,
 };
 
 function resetLevel(full) {
@@ -523,7 +523,7 @@ function resetLevel(full) {
   player.y = cp.y - player.h;
   player.vx = 0; player.vy = 0;
   player.onGround = false;
-  player.coyote = 0; player.jumpBuf = 0;
+  player.coyote = 0; player.jumpBuf = 0; player.stun = 0;
   cameraX = Math.max(0, player.x - W*0.35);
 }
 
@@ -564,14 +564,35 @@ function resolvePlayer(dt) {
   if (player.x + player.w > LEVEL_W * TILE) { player.x = LEVEL_W*TILE - player.w; player.vx = 0; }
 }
 
+function groundUnder(px, feetY) {
+  // Thin probe just below feet — true if a platform would catch a landing
+  return !!solidAt(px, feetY, player.w, 6);
+}
+
 function hurtPlayer(fromX) {
   if (invuln > 0 || state !== "play") return;
   hearts--;
   invuln = 1.4;
   player.flash = 1.4;
-  player.vx = (player.x + player.w/2 < fromX ? -1 : 1) * -220;
-  player.vy = -340;
+  // Bounce away from the enemy: horizontal knockback + small upward pop
+  let dir = (player.x + player.w / 2 < fromX) ? -1 : 1;
+  const feet = player.y + player.h;
+  const probe = 56; // ~1.75 tiles ahead
+  const awayHasGround = groundUnder(player.x + dir * probe, feet) ||
+    groundUnder(player.x + dir * probe, feet + TILE);
+  const towardHasGround = groundUnder(player.x - dir * probe, feet) ||
+    groundUnder(player.x - dir * probe, feet + TILE);
+  // Avoid knocking the player straight into a pit (unfair death loop near edges)
+  let kb = 290;
+  if (!awayHasGround) {
+    if (towardHasGround) dir = -dir;
+    else { dir = 0; kb = 0; } // pit both ways — just pop up in place
+  }
+  player.vx = dir * kb;
+  player.vy = -280;
   player.onGround = false;
+  player.stun = 0.25; // brief loss of control so knockback reads
+  player.jumpBuf = 0;
   sfx.hit();
   spawnParticles(player.x + player.w/2, player.y + player.h/2, "#ff4466", 10);
   if (hearts <= 0) {
@@ -681,39 +702,48 @@ function finishSlot() {
 
 // ---------- Update ----------
 function updatePlay(dt) {
-  // movement
-  let move = 0;
-  if (keys["arrowleft"] || keys["a"]) move -= 1;
-  if (keys["arrowright"] || keys["d"]) move += 1;
-  if (move !== 0) {
-    player.vx += move * MOVE_ACC * dt;
-    player.facing = move;
+  if (player.stun > 0) player.stun -= dt;
+
+  // movement (disabled briefly while stunned so knockback reads)
+  if (player.stun <= 0) {
+    let move = 0;
+    if (keys["arrowleft"] || keys["a"]) move -= 1;
+    if (keys["arrowright"] || keys["d"]) move += 1;
+    if (move !== 0) {
+      player.vx += move * MOVE_ACC * dt;
+      player.facing = move;
+    } else {
+      const fr = FRICTION * dt;
+      if (Math.abs(player.vx) <= fr) player.vx = 0;
+      else player.vx -= Math.sign(player.vx) * fr;
+    }
+    player.vx = Math.max(-MOVE_MAX, Math.min(MOVE_MAX, player.vx));
+
+    // jump buffer / coyote
+    if (justPressed[" "] || justPressed["arrowup"] || justPressed["w"]) {
+      player.jumpBuf = JUMP_BUF;
+    }
+    if (player.onGround) player.coyote = COYOTE;
+    else player.coyote -= dt;
+    player.jumpBuf -= dt;
+
+    if (player.jumpBuf > 0 && player.coyote > 0) {
+      player.vy = JUMP_V;
+      player.onGround = false;
+      player.coyote = 0;
+      player.jumpBuf = 0;
+      sfx.jump();
+    }
+    // variable jump height
+    const jumpHeld = keys[" "] || keys["arrowup"] || keys["w"];
+    if (!jumpHeld && player.vy < 0) {
+      player.vy *= JUMP_CUT;
+    }
   } else {
-    const fr = FRICTION * dt;
-    if (Math.abs(player.vx) <= fr) player.vx = 0;
-    else player.vx -= Math.sign(player.vx) * fr;
-  }
-  player.vx = Math.max(-MOVE_MAX, Math.min(MOVE_MAX, player.vx));
-
-  // jump buffer / coyote
-  if (justPressed[" "] || justPressed["arrowup"] || justPressed["w"]) {
-    player.jumpBuf = JUMP_BUF;
-  }
-  if (player.onGround) player.coyote = COYOTE;
-  else player.coyote -= dt;
-  player.jumpBuf -= dt;
-
-  if (player.jumpBuf > 0 && player.coyote > 0) {
-    player.vy = JUMP_V;
-    player.onGround = false;
-    player.coyote = 0;
+    // Stunned: light air drag only; do not clamp to MOVE_MAX (preserves knockback)
     player.jumpBuf = 0;
-    sfx.jump();
-  }
-  // variable jump height
-  const jumpHeld = keys[" "] || keys["arrowup"] || keys["w"];
-  if (!jumpHeld && player.vy < 0) {
-    player.vy *= JUMP_CUT;
+    player.coyote = 0;
+    player.vx *= (1 - Math.min(1, 1.2 * dt));
   }
 
   player.vy += GRAV * dt;
@@ -844,6 +874,7 @@ function resetAfterDeath() {
   const cp = checkpoints[checkpointIdx];
   player.x = cp.x; player.y = cp.y - player.h;
   player.vx = 0; player.vy = 0;
+  player.stun = 0;
   // Respawn all level collectible cards/coins after any death (enemies or pit)
   coins = makeCoins();
   // Enemies stay defeated for nicer flow
