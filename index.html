@@ -350,6 +350,7 @@ function setMuted(v) {
   if (masterGain) masterGain.gain.value = muted ? 0 : 1;
   if (cryHtmlAudio) cryHtmlAudio.muted = muted;
   if (cryLoopHtmlAudio) cryLoopHtmlAudio.muted = muted;
+  if (bgm.html) bgm.html.muted = muted;
   const btn = document.getElementById("muteBtn");
   if (btn) {
     btn.textContent = muted ? "🔇" : "🔊";
@@ -453,6 +454,7 @@ function stopDeathCry() {
   if (cryLoopHtmlAudio) { try { cryLoopHtmlAudio.pause(); cryLoopHtmlAudio.currentTime = 0; } catch (_) {} }
   cryAudio.playing = false;
   cryAudio.startedAt = null;
+  duckBgm(false);
 }
 
 /** Start one-shot once; no stack. Syncs with dead-anim frame 0. */
@@ -474,10 +476,12 @@ function playDeathCry() {
         if (cryAudio.source === src) {
           cryAudio.source = null;
           cryAudio.playing = false;
+          duckBgm(false);
         }
       };
       cryAudio.source = src;
       cryAudio.startedAt = actx.currentTime;
+      duckBgm(true);
       src.start(0);
       console.log("[HBC] cry_death start (WebAudio)", { wallMs: wall, ctxT: cryAudio.startedAt, animT: 0 });
       return;
@@ -491,9 +495,114 @@ function playDeathCry() {
   cryHtmlAudio.volume = CRY_VOLUME;
   cryHtmlAudio.currentTime = 0;
   cryAudio.startedAt = wall / 1000;
+  duckBgm(true);
   const p = cryHtmlAudio.play();
   if (p && p.catch) p.catch(() => {});
   console.log("[HBC] cry_death start (HTMLAudio)", { wallMs: wall, animT: 0 });
+}
+
+// ---------- Background music ----------
+// One looping track for the whole session: starts on the first key/tap (audio unlock) and is never
+// restarted — deaths, slot rolls, level changes and the gallery leave it alone. Routed through
+// masterGain so the mute toggle silences it; ducked briefly under the death cry.
+const BGM_VOLUME = 0.35;   // relative to master (SFX beeps / cry sit above it)
+const BGM_DUCK = 0.4;      // music multiplier while the death cry plays
+const bgm = {
+  url: null, buf: null, html: null, src: null, gain: null,
+  wanted: false,     // set by the first user gesture
+  starts: 0,         // times the loop was (re)started — should stay 1 per page load
+  t0: 0, offset: 0, loopStart: 0, loopEnd: 0, failed: false, mode: null,
+};
+// Trim codec padding / dead air at both ends so the wrap has no audible gap
+function bgmLoopPoints(buf) {
+  // 10 ms windows; a window counts as silent when its RMS is under -50 dBFS (lossy codecs leave faint noise)
+  const ch = [];
+  for (let c = 0; c < buf.numberOfChannels; c++) ch.push(buf.getChannelData(c));
+  const win = Math.max(1, Math.floor(buf.sampleRate * 0.01)), th2 = 0.00316 * 0.00316;
+  const loudWin = (i0) => {
+    let sum = 0, n = 0;
+    for (const d of ch) for (let i = i0; i < Math.min(i0 + win, d.length); i++) { sum += d[i] * d[i]; n++; }
+    return n && sum / n > th2;
+  };
+  const maxTrim = Math.floor(buf.sampleRate * 0.6);
+  let a = 0, b = buf.length;
+  while (a < maxTrim && !loudWin(a)) a += win;
+  while (buf.length - b < maxTrim && !loudWin(b - win)) b -= win;
+  return { start: a / buf.sampleRate, end: b / buf.sampleRate };
+}
+async function loadBgm() {
+  bgm.url = pickAudioUrl("audio/bgm_main");
+  try {
+    bgm.buf = await fetchDecode(bgm.url);
+    const lp = bgmLoopPoints(bgm.buf);
+    bgm.loopStart = lp.start; bgm.loopEnd = lp.end;
+    bgm.mode = "webaudio";
+  } catch (e) {
+    console.warn("[HBC] music decode failed, using HTMLAudio loop", e && e.message);
+    bgm.html = new Audio(bgm.url);
+    bgm.html.loop = true;
+    bgm.html.preload = "auto";
+    bgm.html.volume = BGM_VOLUME;
+    bgm.html.muted = muted;
+    bgm.mode = "html";
+  }
+  if (bgm.wanted) startBgm();
+}
+function startBgm() {
+  bgm.wanted = true;
+  if (bgm.src || (bgm.html && !bgm.html.paused)) return; // already looping — never restart
+  try {
+    if (bgm.buf && actx) {
+      if (!bgm.gain) {
+        bgm.gain = actx.createGain();
+        bgm.gain.gain.value = BGM_VOLUME;
+        bgm.gain.connect(masterGain || actx.destination);
+      }
+      const src = actx.createBufferSource();
+      src.buffer = bgm.buf;
+      src.loop = true;
+      src.loopStart = bgm.loopStart;
+      src.loopEnd = bgm.loopEnd;
+      src.connect(bgm.gain);
+      bgm.t0 = actx.currentTime;
+      bgm.offset = bgm.loopStart;
+      src.start(0, bgm.offset);
+      bgm.src = src;
+      bgm.starts++;
+    } else if (bgm.html) {
+      bgm.html.muted = muted;
+      const pr = bgm.html.play();
+      bgm.starts++;
+      if (pr && pr.catch) pr.catch(() => { bgm.starts--; }); // not unlocked yet; next gesture retries
+    }
+  } catch (e) { console.warn("[HBC] music start", e && e.message); }
+}
+// Any key / tap / click unlocks audio and kicks the music off (idempotent)
+function unlockAudio() {
+  ensureAudio();
+  startBgm();
+}
+["keydown", "pointerdown", "touchend", "mousedown"].forEach(ev =>
+  window.addEventListener(ev, unlockAudio, { capture: true, passive: true }));
+document.addEventListener("visibilitychange", () => {
+  // iOS can leave the context "interrupted" after a background trip; resume quietly when back
+  if (!document.hidden && actx && actx.state !== "running" && bgm.wanted) actx.resume().catch(() => {});
+});
+function duckBgm(on) {
+  if (bgm.gain && actx) {
+    const g = bgm.gain.gain, t = actx.currentTime;
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(g.value, t);
+    g.linearRampToValueAtTime(BGM_VOLUME * (on ? BGM_DUCK : 1), t + (on ? 0.15 : 0.6));
+  } else if (bgm.html) bgm.html.volume = BGM_VOLUME * (on ? BGM_DUCK : 1);
+}
+function bgmPosition() {
+  if (bgm.src && actx) {
+    const len = bgm.loopEnd - bgm.loopStart;
+    const el = actx.currentTime - bgm.t0 + (bgm.offset - bgm.loopStart);
+    return bgm.loopStart + (el % len);
+  }
+  return bgm.html ? bgm.html.currentTime : 0;
 }
 
 function maybeStartCryLoop() {
@@ -750,23 +859,40 @@ function canvasCoords(clientX, clientY) {
   };
 }
 
+// Start (or restart) a level from its first checkpoint and remember it as the current level
+function startLevel(n) {
+  loadLevel(n);
+  progress.level = levelNum;
+  saveProgress(progress);
+  resetLevel(true);
+  state = "play";
+}
+// Win panel primary action: Level 1 → continue to Level 2; last level → back to Level 1
+function winContinue() {
+  if (winStats && !winStats.final) startLevel(levelNum + 1);
+  else startLevel(1);
+}
+
 function handleCanvasTap(sx, sy) {
   ensureAudio();
+  if (congrats) { dismissCongrats(); return; }
+  if (performance.now() - congratsClosedAt < 300) return; // the dismissing tap does nothing else
   if (state === "title") {
     if (!heroSprites.ready && !heroSprites.failed) return;
-    resetLevel(true);
-    state = "play";
+    startLevel(progress.level);
     return;
   }
   if (state === "win") {
-    resetLevel(true);
-    state = "play";
+    winContinue();
     return;
   }
   if (state === "collection") {
     handleGalleryClick(sx, sy);
   }
 }
+
+// Any tap / click anywhere (incl. on-screen buttons) dismisses the celebration
+window.addEventListener("pointerdown", () => { if (congrats) dismissCongrats(); }, true);
 
 canvas.addEventListener("mousedown", e => {
   if (e.button !== 0) return;
@@ -1257,68 +1383,166 @@ function drawCardBadges(char, x, y, w, h, opts, iconOnly) {
 }
 
 // ---------- Level data ----------
-// Tile size 32. World is ~120 tiles wide (~3840px), tall enough for pits.
+// Tile size 32. Levels are DATA (a list of hand-built sections) + a DIFFICULTY object.
+// buildLevel() lays the sections end to end and applies the difficulty:
+//   enemySpeed — multiplies patrol speed (and hopper hop rate)
+//   enemyCount — enemies = round(base "tier 1" count × mult), filled from "tier 2" bonus slots
+//   pitFreq    — share of the marked ground spots that get a 2-tile pit cut into them
+//   dropRate   — share of babe pickup spots kept (1.0 = all)
+// An escalating multiplier later only has to scale these four numbers.
 const TILE = 32;
-const LEVEL_W = 130;
 const LEVEL_H = 18;
+const GROUND_Y = 15;
+let LEVEL_W = 130; // set by loadLevel()
 
-// Solid platforms encoded as list of rects {x,y,w,h} in tiles
-const platforms = [
-  // Max comfortable rise ≈ 2 tiles (see MAX_JUMP_H / reachability). All steps ≤ 2.
-  // start ground
-  {x:0,y:15,w:18,h:3},
-  // ascending stairs (Δ2 each)
-  {x:20,y:13,w:5,h:1},
-  {x:27,y:11,w:4,h:1},
-  {x:33,y:13,w:6,h:1},
-  // mid ground with gap
-  {x:40,y:15,w:12,h:3},
-  {x:55,y:15,w:8,h:3},
-  // high ledge route — stepped from mid ground
-  {x:46,y:13,w:3,h:1},
-  {x:49,y:11,w:3,h:1},
-  {x:53,y:9,w:3,h:1},
-  {x:57,y:7,w:4,h:1},
-  // floating platforms over pit (Δ2 from ground / each other)
-  {x:64,y:13,w:3,h:1},
-  {x:69,y:11,w:3,h:1},
-  {x:74,y:13,w:4,h:1},
-  // after pit
-  {x:80,y:15,w:16,h:3},
-  {x:84,y:13,w:3,h:1},
-  {x:88,y:11,w:3,h:1},
-  {x:92,y:13,w:4,h:1},
-  // final stretch
-  {x:99,y:15,w:8,h:3},
-  {x:109,y:13,w:5,h:1},
-  {x:116,y:15,w:14,h:3},
-  {x:120,y:13,w:3,h:1},
+// Section helpers (local tile coords). Every section starts and ends on ground (y 15).
+const G = (x, w) => [x, GROUND_Y, w, LEVEL_H - GROUND_Y];   // ground block
+const P = (x, y, w) => [x, y, w, 1];                        // floating ledge
+const COL = (x, y, w) => [x, y, w, LEVEL_H - y];            // pillar to the floor
+const WK = (x, y, a, b, vx, tier) => ({ type: "walker", x, y, a, b, vx, tier: tier || 1 });
+const HP = (x, y, a, b, vx, tier, hopT) => ({ type: "hopper", x, y, a, b, vx, tier: tier || 1, hopT: hopT || 0 });
+
+const SECTIONS = {
+  // The original Level 1 (0–130), unchanged except its goal moved to the new finale
+  classic: { w: 116, plats: [
+      G(0, 18), P(20, 13, 5), P(27, 11, 4), P(33, 13, 6), G(40, 12), G(55, 8),
+      P(46, 13, 3), P(49, 11, 3), P(53, 9, 3), P(57, 7, 4),
+      P(64, 13, 3), P(69, 11, 3), P(74, 13, 4),
+      G(80, 16), P(84, 13, 3), P(88, 11, 3), P(92, 13, 4),
+      G(99, 8), P(109, 13, 5) ],
+    picks: [[8, 13], [28, 9], [58, 5], [71, 9], [89, 9]],
+    enemies: [
+      WK(10, 15, 2, 16, 60), WK(44, 15, 40, 50, 70), HP(34, 13, 33, 39, 40, 1, 0),
+      WK(86, 15, 80, 94, 80), HP(70, 11, 69, 72, 30, 1, 0.5), WK(110, 13, 109, 113.875, 55), HP(102, 15, 99, 106, 35, 1, 1.2),
+    ],
+    cps: [2, 42, 82] },
+  // old end stretch (116–130) + perch, kept as the hand-off into the new content
+  classicEnd: { w: 16, plats: [G(0, 16), P(4, 13, 3)], picks: [[5, 11]], enemies: [WK(10, 15, 8, 15, 60, 2)], cuts: [] },
+  meadow: { w: 24, plats: [G(0, 24), P(6, 13, 3), P(11, 11, 3), P(16, 13, 3)],
+    picks: [[12, 9]], enemies: [WK(4, 15, 1, 22, 65), HP(12, 11, 11, 14, 30, 2, 0.4)], cps: [2], cuts: [20] },
+  pitIslands: { w: 26, plats: [G(0, 5), G(8, 4), P(14, 13, 3), G(19, 7)],
+    picks: [[15, 11]], enemies: [WK(9, 15, 8, 12, 45, 2), WK(21, 15, 19, 26, 70)], cps: [2] },
+  staircase: { w: 28, plats: [G(0, 6), COL(6, 13, 3), COL(9, 11, 3), COL(12, 9, 4), COL(16, 11, 3), COL(19, 13, 3), G(22, 6)],
+    picks: [[13, 7]], enemies: [HP(13, 9, 12, 16, 35, 1, 0.3), WK(24, 15, 22, 28, 60, 2)], cuts: [2] },
+  rest: { w: 14, plats: [G(0, 14), P(7, 13, 3)], picks: [[8, 11]], enemies: [], cps: [3] },
+  highRoad: { w: 34, plats: [G(0, 34), P(4, 13, 3), P(8, 11, 4), P(13, 9, 5), P(19, 9, 5), P(25, 11, 3), P(29, 13, 3)],
+    picks: [[16, 7], [30, 11]], enemies: [WK(10, 15, 1, 33, 75), WK(24, 15, 1, 33, 70, 2), HP(21, 9, 19, 24, 30, 2, 0.8)], cuts: [2, 17] },
+  zigzag: { w: 30, plats: [G(0, 4), P(6, 13, 3), P(11, 11, 3), P(16, 13, 3), P(21, 11, 3), G(26, 4)],
+    picks: [[22, 9]], enemies: [HP(12, 11, 11, 14, 30, 2, 0.2), WK(26, 15, 26, 30, 50, 2), WK(7, 13, 6, 9, 40)] },
+  arena: { w: 30, plats: [G(0, 30), P(8, 13, 4), P(13, 11, 4), P(18, 13, 4)],
+    picks: [[14, 9]], enemies: [WK(5, 15, 1, 14, 70), WK(22, 15, 15, 29, 70), WK(12, 15, 6, 24, 85, 2), HP(14, 11, 13, 17, 30, 2, 0.6)], cps: [2], cuts: [25] },
+  valley: { w: 26, plats: [G(0, 6), [6, 16, 14, 2], P(10, 14, 4), G(20, 6)],
+    picks: [[11, 12]], enemies: [WK(8, 16, 6, 20, 60), WK(16, 16, 6, 20, 70, 2)], cps: [2] },
+  towers: { w: 28, plats: [G(0, 5), COL(5, 13, 2), COL(9, 11, 2), COL(13, 13, 2), COL(17, 11, 2), COL(21, 13, 2), G(23, 5)],
+    picks: [[17, 9]], enemies: [WK(1, 15, 0, 5, 40), WK(24, 15, 23, 28, 55, 2)], cps: [2] },
+  doubleGap: { w: 28, plats: [G(0, 6), G(9, 5), G(17, 4), G(24, 4)],
+    picks: [[12, 13]], enemies: [WK(10, 15, 9, 14, 55), WK(18, 15, 17, 21, 50, 2)], cps: [2] },
+  bridge: { w: 32, cps: [1], plats: [G(0, 3), P(3, 13, 26), G(29, 3)],
+    picks: [[16, 11], [8, 11]], enemies: [WK(8, 13, 3, 29, 60), WK(20, 13, 3, 29, 65), HP(14, 13, 11, 18, 30, 2, 0.5)] },
+  ladder: { w: 24, plats: [G(0, 24), P(4, 13, 4), P(9, 11, 4), P(4, 9, 4), P(10, 7, 6), P(17, 9, 3), P(21, 11, 3)],
+    picks: [[12, 5]], enemies: [WK(14, 15, 1, 23, 70), HP(12, 7, 10, 16, 30, 1, 0.1)], cuts: [1] },
+  gauntlet: { w: 36, plats: [G(0, 36), COL(8, 14, 2), COL(16, 13, 2), COL(24, 14, 2)], cps: [2], cuts: [33],
+    picks: [[17, 11], [30, 13]], enemies: [WK(4, 15, 0, 8, 55), WK(12, 15, 10, 16, 60), WK(20, 15, 18, 24, 65, 2), WK(30, 15, 26, 36, 70), HP(28, 15, 26, 34, 35, 2, 0.9)] },
+  finale: { w: 20, plats: [G(0, 20), P(6, 13, 3), P(10, 11, 3)], picks: [[11, 9]], enemies: [], goal: 16 },
+};
+
+// Difficulty per level. dropRate stays 1.0 on every level for now (same babe density).
+const DIFFICULTY = {
+  1: { enemySpeed: 1.0, enemyCount: 1.0, pitFreq: 1.0, dropRate: 1.0 },
+  2: { enemySpeed: 1.4, enemyCount: 1.5, pitFreq: 1.4, dropRate: 1.0 },
+};
+const LEVELS = [
+  { id: 1, name: "Level 1", theme: "dusk", sections: [
+      "classic", "classicEnd", "meadow", "pitIslands", "staircase", "rest", "highRoad", "zigzag",
+      "arena", "rest", "valley", "towers", "doubleGap", "finale"] },
+  { id: 2, name: "Level 2", theme: "night", sections: [
+      "rest", "meadow", "bridge", "ladder", "rest", "towers", "gauntlet", "pitIslands", "highRoad",
+      "rest", "zigzag", "doubleGap", "arena", "valley", "staircase", "finale"] },
 ];
+const LEVEL_THEMES = {
+  dusk:  { sky: ["#1b0f2e", "#3a1a4a", "#6b2d5c"], hills: "#2a1538", dirt: "#5c3a28", grass: "#4ec96a", edge: "#3a8f4c" },
+  night: { sky: ["#07142a", "#123457", "#2c6a86"], hills: "#0f2a44", dirt: "#4a3d63", grass: "#5fd6e8", edge: "#3793a8" },
+};
 
-// Checkpoints (world px)
-const checkpoints = [
-  { x: 2 * TILE, y: 15 * TILE },
-  { x: 42 * TILE, y: 15 * TILE },
-  { x: 82 * TILE, y: 15 * TILE },
-];
+// Evenly spread pick of k items from an array (keeps order)
+function spreadPick(arr, k) {
+  if (k >= arr.length) return arr.slice();
+  if (k <= 0) return [];
+  const out = [];
+  for (let i = 0; i < k; i++) out.push(arr[Math.floor((i + 0.5) * arr.length / k)]);
+  return out;
+}
 
-// Coins (~18)
+const CP_MIN_GAP = 30;
+function buildLevel(def, diff) {
+  const plats = [], picks = [], slots = [], cps = [], cutSpots = [];
+  let ox = 0, goalX = null;
+  for (const key of def.sections) {
+    const sec = SECTIONS[key];
+    for (const [x, y, w, h] of sec.plats) if (w > 0) plats.push({ x: x + ox, y, w, h });
+    for (const [x, y] of sec.picks || []) picks.push([x + ox, y]);
+    for (const e of sec.enemies || []) slots.push(Object.assign({}, e, { x: e.x + ox, a: e.a + ox, b: e.b + ox }));
+    for (const c of sec.cps || []) cps.push(c + ox); // candidates, thinned below
+    for (const c of sec.cuts || []) cutSpots.push(c + ox);
+    if (sec.goal != null) goalX = sec.goal + ox;
+    ox += sec.w;
+  }
+  const width = ox;
+  // Babe pickups: keep dropRate share (1.0 → all)
+  const keptPicks = spreadPick(picks, Math.round(picks.length * diff.dropRate));
+  // Enemies: tier 1 base, scaled by enemyCount using tier 2 bonus slots
+  const t1 = slots.filter(e => e.tier === 1), t2 = slots.filter(e => e.tier !== 1);
+  const target = Math.round(t1.length * diff.enemyCount);
+  const chosen = target <= t1.length ? spreadPick(t1, target) : t1.concat(spreadPick(t2, target - t1.length));
+  chosen.sort((a, b) => a.x - b.x);
+  // Checkpoints: keep candidates at least CP_MIN_GAP tiles apart (first one is the start)
+  cps.sort((a, b) => a - b);
+  const keptCps = [];
+  for (const c of cps) if (!keptCps.length || c - keptCps[keptCps.length - 1] >= CP_MIN_GAP) keptCps.push(c);
+  // Pits: cut a 2-tile gap into a share of the marked ground spots (never under a pickup/enemy/flag)
+  const blocked = x => keptPicks.some(([px]) => Math.abs(px - x) < 3) || chosen.some(e => Math.abs(e.x - x) < 3) ||
+    keptCps.some(c => Math.abs(c - x) < 4) || (goalX != null && Math.abs(goalX - x) < 4);
+  const freeSpots = cutSpots.filter(x => !blocked(x) && !blocked(x + 1));
+  const nCuts = Math.round(freeSpots.length * Math.min(1, 0.35 * diff.pitFreq));
+  let cuts = 0;
+  for (const cx of spreadPick(freeSpots, nCuts)) {
+    const i = plats.findIndex(p => p.y === GROUND_Y && p.x + 1 < cx && p.x + p.w > cx + 3);
+    if (i < 0) continue;
+    const p = plats[i];
+    plats.splice(i, 1, { x: p.x, y: p.y, w: cx - p.x, h: p.h }, { x: cx + 2, y: p.y, w: p.x + p.w - (cx + 2), h: p.h });
+    cuts++;
+  }
+  return {
+    id: def.id, name: def.name, theme: LEVEL_THEMES[def.theme] || LEVEL_THEMES.dusk, diff,
+    width, plats, picks: keptPicks, enemySlots: chosen, pits: cuts,
+    checkpoints: keptCps.map(x => ({ x: x * TILE, y: GROUND_Y * TILE })),
+    goal: { x: (goalX != null ? goalX : width - 4) * TILE, y: 12 * TILE, w: 20, h: 96 },
+  };
+}
+
+let levelNum = 1;
+let level = null;
+let platforms = [];
+let checkpoints = [];
+let goal = { x: 0, y: 0, w: 20, h: 96 };
+
+function loadLevel(n) {
+  levelNum = Math.max(1, Math.min(LEVELS.length, n | 0));
+  level = buildLevel(LEVELS[levelNum - 1], DIFFICULTY[levelNum] || DIFFICULTY[1]);
+  LEVEL_W = level.width;
+  platforms = level.plats;
+  checkpoints = level.checkpoints;
+  goal = level.goal;
+  checkpointIdx = 0;
+}
+
+// Babe pickups (mystery cardbacks) — respawn on death like before
 function makeCoins() {
-  // Sparse set (~1/4 of prior 22): rare, rewarding, all reachable
-  // [tileX, tileY] — just above platform tops
-  const spots = [
-    [8, 13],   // near start (easy)
-    [28, 9],   // early high stair (optional height)
-    [58, 5],   // peak of high ledge route (hardest optional)
-    [71, 9],   // over the pit floating platform
-    [89, 9],   // post-pit high ledge
-    [121, 11], // near the goal / end perch
-  ];
-  return spots.map(([tx,ty]) => {
+  return level.picks.map(([tx, ty]) => {
     const cw = 15;
     return {
-      x: tx*TILE + 8, y: ty*TILE + 4, w: cw, h: cardHeight(cw),
-      collected: false, bob: Math.random()*Math.PI*2
+      x: tx * TILE + 8, y: ty * TILE + 4, w: cw, h: cardHeight(cw),
+      collected: false, bob: Math.random() * Math.PI * 2,
     };
   });
 }
@@ -1334,19 +1558,24 @@ function enemyOnPlat(type, xTile, platY, w, h, extra) {
 }
 
 function makeEnemies() {
-  // Seated on real platform tops; patrol ranges stay on that surface
-  return [
-    enemyOnPlat("walker", 10, 15, 28, 28, { vx: 60, dir: 1, minX: 2 * TILE, maxX: 16 * TILE }),
-    enemyOnPlat("walker", 44, 15, 28, 28, { vx: 70, dir: -1, minX: 40 * TILE, maxX: 50 * TILE }),
-    enemyOnPlat("hopper", 34, 13, 26, 26, { vx: 40, dir: 1, minX: 33 * TILE, maxX: 39 * TILE, hopT: 0 }),
-    enemyOnPlat("walker", 86, 15, 28, 28, { vx: 80, dir: 1, minX: 80 * TILE, maxX: 94 * TILE }),
-    enemyOnPlat("hopper", 70, 11, 26, 26, { vx: 30, dir: -1, minX: 69 * TILE, maxX: 72 * TILE, hopT: 0.5 }),
-    enemyOnPlat("walker", 110, 13, 28, 28, { vx: 55, dir: 1, minX: 109 * TILE, maxX: 114 * TILE - 4 }),
-    enemyOnPlat("hopper", 102, 15, 26, 26, { vx: 35, dir: 1, minX: 99 * TILE, maxX: 106 * TILE, hopT: 1.2 }),
-  ];
+  const sp = level.diff.enemySpeed;
+  return level.enemySlots.map((e, i) => {
+    const hop = e.type === "hopper";
+    return enemyOnPlat(e.type, e.x, e.y, hop ? 26 : 28, hop ? 26 : 28, {
+      vx: e.vx * sp, dir: i % 2 ? -1 : 1, minX: e.a * TILE, maxX: e.b * TILE,
+      hopT: e.hopT || 0, hopEvery: 1.1 / sp,
+    });
+  });
 }
 
-const goal = { x: 126*TILE, y: 12*TILE, w: 20, h: 96 };
+// Level progress: the level you're on survives reloads; beating the last level resets to 1
+const PROGRESS_KEY = "hbc_progress_v1";
+function loadProgress() {
+  try { const o = JSON.parse(localStorage.getItem(PROGRESS_KEY) || "null"); if (o && o.level >= 1) return o; } catch (e) {}
+  return { level: 1, beatGame: false };
+}
+function saveProgress(o) { try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(o)); } catch (e) {} }
+let progress = loadProgress();
 
 // ---------- Game state ----------
 const GRAV = 2200;
@@ -1365,6 +1594,52 @@ const JUMP_BUF = 0.12;
 
 let state = "title"; // title | play | collection | dying | dead | win
 let collection = loadCollection();
+
+// Mini tray: newest-first list of owned babes by latest acquisition (persisted)
+const RECENT_KEY = "hbc_recent_v1";
+let recentBabes = [];
+try { const a = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]"); if (Array.isArray(a)) recentBabes = a; } catch (e) {}
+function saveRecent() { try { localStorage.setItem(RECENT_KEY, JSON.stringify(recentBabes)); } catch (e) {} }
+// Drop unknown / no-longer-owned ids; owned babes missing from the list (older saves) go in as oldest
+function syncRecent() {
+  const seen = new Set(), out = [];
+  for (const id of recentBabes) if (!seen.has(id) && babeById(id) && (collection[id] || 0) > 0) { seen.add(id); out.push(id); }
+  for (const b of BABE_POOL) if (!seen.has(b.id) && (collection[b.id] || 0) > 0) out.push(b.id);
+  recentBabes = out;
+  saveRecent();
+}
+function noteAcquired(id) {
+  recentBabes = [id].concat(recentBabes.filter(x => x !== id));
+  saveRecent();
+  hudTray.slideAt = performance.now(); // newest slides in from the right (wall-clock, so it finishes even while paused)
+}
+syncRecent();
+
+// Complete-collection celebration: fires once (flag persisted), right after the completing roll
+const COMPLETE_KEY = "hbc_complete_v1";
+const CONGRATS_TEXT = "Congrats! You completed the collection! Life doesn't suck anymore.";
+const CONGRATS_DUR = 6;
+let collectionCompleteFlag = false;
+try { collectionCompleteFlag = localStorage.getItem(COMPLETE_KEY) === "1"; } catch (e) {}
+let congrats = null; // { t, sparks }
+function checkCollectionComplete() {
+  if (collectionCompleteFlag) return;
+  if (!BABE_POOL.every(b => (collection[b.id] || 0) > 0)) return;
+  collectionCompleteFlag = true;
+  try { localStorage.setItem(COMPLETE_KEY, "1"); } catch (e) {}
+  const sparks = [];
+  for (let i = 0; i < 70; i++) sparks.push({ x: Math.random() * W, y: Math.random() * H, p: Math.random() * 6.28, s: 1 + Math.random() * 3, vy: 20 + Math.random() * 60, hue: Math.floor(Math.random() * 360) });
+  congrats = { t: 0, sparks };
+  try { sfx.win(); } catch (e) {}
+}
+let congratsClosedAt = -1e9;
+function dismissCongrats(force) {
+  if (!congrats || (!force && congrats.t < 0.4)) return; // brief grace so a held key doesn't skip it
+  congrats = null;
+  congratsClosedAt = performance.now();
+  // Rolls earned meanwhile resume now
+  if (!slot && slotQueue > 0) { slotQueue--; if (!beginSlotRoll()) slotQueue = 0; }
+}
 let hearts = 3;
 let invuln = 0;
 let checkpointIdx = 0;
@@ -1381,6 +1656,8 @@ let loseAnim = null;
 let deathCry = null; // { t, dur, lostName, lostId, lostPrevCount } — in-world cry before Ouch
 let winStats = null;
 let runGained = [];   // babe ids gained this run (for win screen)
+let collectionReturn = "play";
+function openCollection() { collectionReturn = state === "win" ? "win" : "play"; state = "collection"; }
 let gallery = {
   filter: "all", // all | owned | missing | common | rare | ultra
   scroll: 0,
@@ -1405,6 +1682,7 @@ let hudTray = {
   targetScroll: 0,
   highlightId: null,
   highlightT: 0,
+  slideAt: -1e9,
 };
 let deathGridScroll = 0; // snap-scroll so lost babe is visible
 
@@ -1428,9 +1706,11 @@ function resetLevel(full) {
   stopDeathCry();
   hearts = 3;
   invuln = 0;
+  congrats = null;
   if (full) {
     checkpointIdx = 0;
     collection = loadCollection();
+    syncRecent();
     runGained = [];
     hudTray.scroll = 0;
     hudTray.targetScroll = 0;
@@ -1761,6 +2041,7 @@ function finishSlot() {
   const nowMax = collection[id] >= MAX_COPIES;
   const maxTag = nowMax ? " MAX" : "";
   saveCollection(collection);
+  noteAcquired(id); // dupes move to newest too
   runGained.push(id);
   focusHudOnBabe(id);
   const rar = rarityOf(id);
@@ -1784,8 +2065,10 @@ function finishSlot() {
     else addCallout("DUPE x" + n + maxTag + " — " + nm + " · Common", nowMax ? "#ffe66d" : "#9ad0ff");
   }
   slot = null;
-  // Chain queued rolls immediately (even over death/win overlays — player earned them)
-  if (slotQueue > 0) {
+  checkCollectionComplete(); // shows the celebration right after the completing roll
+  // Chain queued rolls immediately (even over death/win overlays — player earned them);
+  // while the celebration is up they wait and resume when it's dismissed
+  if (slotQueue > 0 && !congrats) {
     slotQueue--;
     // If that was the last babe in the pool, the queued pickups have nothing left to roll
     if (!beginSlotRoll()) slotQueue = 0;
@@ -1903,7 +2186,7 @@ function updatePlay(dt) {
       e.vy = 0;
       if (e.type === "hopper") {
         e.hopT = (e.hopT || 0) + dt;
-        if (e.hopT > 1.1) { e.vy = -520; e.hopT = 0; }
+        if (e.hopT > (e.hopEvery || 1.1)) { e.vy = -520; e.hopT = 0; }
       }
     }
 
@@ -1940,7 +2223,12 @@ function updatePlay(dt) {
   // goal
   if (aabb(player, goal)) {
     state = "win";
+    const final = levelNum >= LEVELS.length;
+    if (final) { progress.level = 1; progress.beatGame = true; }
+    else progress.level = levelNum + 1; // next session picks up at the next level
+    saveProgress(progress);
     winStats = {
+      level: levelNum, final,
       unique: ownedUniqueCount(collection),
       total: totalPulls(collection),
       coins: coins.filter(c => c.collected).length,
@@ -2003,6 +2291,7 @@ function resetAfterDeath() {
   player.stompGrace = 0;
   player.fromStomp = false;
   player.prevX = player.x; player.prevY = player.y;
+  syncRecent(); // a babe lost down to 0 leaves the tray now
   // Respawn coins AND enemies at original positions/state (same as level start)
   coins = makeCoins();
   enemies = makeEnemies();
@@ -2035,14 +2324,15 @@ function aabb(a, b) {
 function drawBackground() {
   // sky gradient
   const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, "#1b0f2e");
-  g.addColorStop(0.5, "#3a1a4a");
-  g.addColorStop(1, "#6b2d5c");
+  const th = (level && level.theme) || LEVEL_THEMES.dusk;
+  g.addColorStop(0, th.sky[0]);
+  g.addColorStop(0.5, th.sky[1]);
+  g.addColorStop(1, th.sky[2]);
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
 
   // parallax hills
-  ctx.fillStyle = "#2a1538";
+  ctx.fillStyle = th.hills;
   for (let i = 0; i < 8; i++) {
     const hx = ((i * 280) - cameraX * 0.2) % (W + 300) - 80;
     ctx.beginPath();
@@ -2062,17 +2352,20 @@ function drawWorld() {
   ctx.save();
   ctx.translate(-Math.floor(cameraX), 0);
 
-  // platforms
+  // platforms (only those on screen — levels are ~3x longer now)
+  const th = level.theme;
+  const viewL = cameraX - 64, viewR = cameraX + W + 64;
   for (const p of platforms) {
     const x = p.x*TILE, y = p.y*TILE, w = p.w*TILE, h = p.h*TILE;
+    if (x + w < viewL || x > viewR) continue;
     // dirt body
-    ctx.fillStyle = "#5c3a28";
+    ctx.fillStyle = th.dirt;
     ctx.fillRect(x, y, w, h);
     // grass top
-    ctx.fillStyle = "#4ec96a";
+    ctx.fillStyle = th.grass;
     ctx.fillRect(x, y, w, 8);
     // pixel edge
-    ctx.fillStyle = "#3a8f4c";
+    ctx.fillStyle = th.edge;
     for (let i = 0; i < w; i += 8) ctx.fillRect(x + i, y + 8, 6, 3);
     // bricks hint on tall
     if (h > TILE) {
@@ -2100,7 +2393,7 @@ function drawWorld() {
 
   // coins — mystery cardback (Iris A5), bob + sparkle
   for (const c of coins) {
-    if (c.collected) continue;
+    if (c.collected || c.x + c.w < viewL || c.x > viewR) continue;
     const by = c.y + Math.sin(c.bob) * 4;
     const cx = Math.floor(c.x), cy = Math.floor(by);
     const cw = Math.floor(c.w), ch = Math.floor(c.h);
@@ -2128,7 +2421,7 @@ function drawWorld() {
 
   // enemies
   for (const e of enemies) {
-    if (!e.alive) continue;
+    if (!e.alive || e.x + e.w < viewL || e.x > viewR) continue;
     if (e.type === "walker") {
       ctx.fillStyle = "#e85d4c";
       roundRect(e.x, e.y, e.w, e.h, 4);
@@ -2188,24 +2481,29 @@ function drawWorld() {
 }
 
 
+// Bottom-right mini tray: only owned babes, newest acquisition on the right, at most 5.
 function drawHudLiveBabes() {
   if (state !== "play" && state !== "dead" && state !== "dying") return;
-
-  const list = sortedBabeList();
+  const lostId = state === "dead" && loseAnim ? loseAnim.lostId : null;
+  // newest-first, owned (keep a just-lost babe visible during the Ouch screen for her X)
+  const recent = recentBabes.filter(id => (collection[id] || 0) > 0 || id === lostId).slice(0, HUD_SLOTS);
+  const list = recent.slice().reverse().map(babeById).filter(Boolean); // oldest → newest (left → right)
+  const n = list.length;
   const cw = HUD_CW, ch = cardHeight(cw), gap = HUD_GAP;
   const pad = 8, counterH = 16;
-  const panelW = pad * 2 + HUD_SLOTS * cw + (HUD_SLOTS - 1) * gap;
-  const panelH = pad + counterH + ch + pad;
+  const unique = ownedUniqueCount(collection);
+  const label = "Babes " + unique + "/" + BABE_POOL.length;
+  ctx.font = "bold 11px sans-serif";
+  const cardsW = n ? n * cw + (n - 1) * gap : 0;
+  const panelW = pad * 2 + Math.max(cardsW, Math.ceil(ctx.measureText(label).width));
+  const panelH = pad + counterH + (n ? ch + pad : 0);
   const margin = 10;
   // Touch: lift tray above on-screen jump; portrait needs less canvas-space lift (letterbox absorbs chrome)
   const portrait = window.innerHeight > window.innerWidth;
   const lift = isTouch ? (portrait ? 78 : 130) : 18;
   const panelX = W - panelW - margin;
-  const panelY = H - panelH - lift;
+  const panelY = H - panelH - lift - (n ? 0 : ch + pad);
   const step = cw + gap;
-  const maxScroll = Math.max(0, (list.length - HUD_SLOTS) * step);
-  hudTray.scroll = Math.max(0, Math.min(maxScroll, hudTray.scroll));
-  hudTray.targetScroll = Math.max(0, Math.min(maxScroll, hudTray.targetScroll));
 
   ctx.save();
   ctx.globalAlpha = 0.78;
@@ -2216,58 +2514,45 @@ function drawHudLiveBabes() {
   ctx.lineWidth = 1.5;
   roundRect(panelX, panelY, panelW, panelH, 8);
   ctx.stroke();
-
-  const unique = ownedUniqueCount(collection);
   ctx.globalAlpha = 0.95;
   ctx.fillStyle = "#ffb0d0";
-  ctx.font = "bold 11px sans-serif";
   ctx.textAlign = "left";
-  ctx.fillText("Babes " + unique + "/" + BABE_POOL.length, panelX + pad, panelY + 13);
+  ctx.fillText(label, panelX + pad, panelY + 13);
 
-  const viewX = panelX + pad;
-  const viewY = panelY + pad + counterH;
-  const viewW = HUD_SLOTS * cw + (HUD_SLOTS - 1) * gap;
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(viewX - 1, viewY - 1, viewW + 2, ch + 2);
-  ctx.clip();
-
-  const startIdx = Math.floor(hudTray.scroll / step);
-  const frac = hudTray.scroll - startIdx * step;
-  for (let i = 0; i <= HUD_SLOTS; i++) {
-    const idx = startIdx + i;
-    if (idx < 0 || idx >= list.length) continue;
-    const babe = list[idx];
-    const x = viewX + i * step - frac;
-    const y = viewY;
-    const count = collection[babe.id] || 0;
-    const isLost = state === "dead" && loseAnim && loseAnim.lostId === babe.id;
-    const isHL = hudTray.highlightId === babe.id && hudTray.highlightT > 0;
-    ctx.globalAlpha = count > 0 || isLost ? 0.95 : 0.5;
-    if (isLost) {
-      const displayCount = count > 0 ? count : (loseAnim.lostPrevCount > 1 ? loseAnim.lostPrevCount - 1 : null);
-      drawCard(babe, x, y, cw, ch, {
-        locked: false,
-        count: displayCount && displayCount > 1 ? displayCount : null,
-        iconOnly: true,
-      });
-      drawLostBabeX(x, y, cw, ch, loseAnim.t);
-    } else {
-      drawCard(babe, x, y, cw, ch, {
-        locked: count === 0,
-        iconOnly: true,
-        count: count > 1 ? count : null,
-      });
+  if (n) {
+    const viewX = panelX + panelW - pad - cardsW; // right-aligned
+    const viewY = panelY + pad + counterH;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(panelX + 2, viewY - 2, panelW - 4, ch + 4);
+    ctx.clip();
+    const slide = step * Math.max(0, 1 - (performance.now() - (hudTray.slideAt || -1e9)) / 200);
+    for (let i = 0; i < n; i++) {
+      const babe = list[i];
+      const isNewest = i === n - 1;
+      const x = viewX + i * step + slide;
+      const y = viewY;
+      const count = collection[babe.id] || 0;
+      const isLost = babe.id === lostId;
+      ctx.globalAlpha = isNewest && slide > 0 ? 0.95 * (1 - slide / step) : 0.95;
+      if (isLost) {
+        const displayCount = count > 0 ? count : (loseAnim.lostPrevCount > 1 ? loseAnim.lostPrevCount - 1 : null);
+        drawCard(babe, x, y, cw, ch, { iconOnly: true, count: displayCount && displayCount > 1 ? displayCount : null });
+        drawLostBabeX(x, y, cw, ch, loseAnim.t);
+      } else {
+        // 15x20 face crops (nearest-neighbour), dupe count, no MAX tag in the tray
+        drawCard(babe, x, y, cw, ch, { iconOnly: true, count: count > 1 ? count : null });
+      }
+      if (hudTray.highlightId === babe.id && hudTray.highlightT > 0) {
+        const pulse = 0.5 + 0.5 * Math.sin((0.55 - hudTray.highlightT) * 20);
+        ctx.strokeStyle = `rgba(255,230,109,${0.55 + 0.45 * pulse})`;
+        ctx.lineWidth = 2;
+        roundRect(x - 1, y - 1, cw + 2, ch + 2, 5);
+        ctx.stroke();
+      }
     }
-    if (isHL) {
-      const pulse = 0.5 + 0.5 * Math.sin((0.55 - hudTray.highlightT) * 20);
-      ctx.strokeStyle = `rgba(255,230,109,${0.55 + 0.45 * pulse})`;
-      ctx.lineWidth = 2;
-      roundRect(x - 1, y - 1, cw + 2, ch + 2, 5);
-      ctx.stroke();
-    }
+    ctx.restore();
   }
-  ctx.restore();
   ctx.restore();
 }
 
@@ -2283,6 +2568,27 @@ function drawHUD() {
     ctx.bezierCurveTo(hx, hy + 18, hx - 12, hy + 14, hx - 12, hy + 6);
     ctx.bezierCurveTo(hx - 12, hy, hx, hy, hx, hy + 6);
     ctx.fill();
+  }
+
+  // level number + distance-to-flag bar (top centre)
+  {
+    const lw = 132, lx = W / 2 - lw / 2, ly = 6;
+    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    roundRect(lx, ly, lw, 30, 8); ctx.fill();
+    ctx.fillStyle = "#ffe66d";
+    ctx.font = "bold 13px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("LEVEL " + levelNum + " / " + LEVELS.length, W / 2, ly + 15);
+    const prog = Math.max(0, Math.min(1, (player.x - checkpoints[0].x) / Math.max(1, goal.x - checkpoints[0].x)));
+    ctx.fillStyle = "rgba(255,255,255,0.18)";
+    ctx.fillRect(lx + 12, ly + 21, lw - 24, 4);
+    ctx.fillStyle = "#ff5a9a";
+    ctx.fillRect(lx + 12, ly + 21, (lw - 24) * prog, 4);
+    for (const cp of checkpoints) { // checkpoint ticks
+      const f = (cp.x - checkpoints[0].x) / Math.max(1, goal.x - checkpoints[0].x);
+      ctx.fillStyle = "rgba(255,255,255,0.6)";
+      ctx.fillRect(lx + 12 + (lw - 24) * f - 0.5, ly + 20, 1.5, 6);
+    }
   }
 
   // collection count
@@ -2405,21 +2711,11 @@ function sortedBabeList() {
 
 function focusHudOnBabe(id) {
   if (!id) return;
-  const list = sortedBabeList();
-  const idx = list.findIndex(b => b.id === id);
-  if (idx < 0) return;
-  const step = HUD_CW + HUD_GAP;
-  let scroll = (idx - Math.floor(HUD_SLOTS / 2)) * step;
-  const maxScroll = Math.max(0, (list.length - HUD_SLOTS) * step);
-  hudTray.targetScroll = Math.max(0, Math.min(maxScroll, scroll));
   hudTray.highlightId = id;
   hudTray.highlightT = 0.55;
 }
 
 function updateHudTray(dt) {
-  const d = hudTray.targetScroll - hudTray.scroll;
-  hudTray.scroll += d * Math.min(1, 14 * dt);
-  if (Math.abs(d) < 0.4) hudTray.scroll = hudTray.targetScroll;
   if (hudTray.highlightT > 0) hudTray.highlightT -= dt;
 }
 
@@ -2524,6 +2820,19 @@ function drawCollection() {
   ctx.font = "bold 14px sans-serif";
   ctx.fillStyle = "#fff";
   ctx.fillText("Babes " + unique + "/" + BABE_POOL.length, W / 2, 54);
+  if (collectionCompleteFlag) {
+    // small badge, right of the count
+    ctx.font = "bold 11px sans-serif";
+    const label = "★ Collection complete";
+    const bw = Math.ceil(ctx.measureText(label).width) + 14;
+    const bx = W / 2 + 52, by = 42;
+    ctx.fillStyle = "#ffd24a";
+    roundRect(bx, by, bw, 16, 8); ctx.fill();
+    ctx.fillStyle = "#3a1600";
+    ctx.textAlign = "left";
+    ctx.fillText(label, bx + 7, by + 12);
+    ctx.textAlign = "center";
+  }
   ctx.font = "11px sans-serif";
   ctx.fillStyle = "#888";
   ctx.fillText("C / Esc close  ·  Wheel / arrows scroll  ·  1–6 filters  ·  Click to inspect", W / 2, H - 10);
@@ -2661,7 +2970,8 @@ function drawTitle() {
     ctx.font = "bold 18px sans-serif";
     ctx.fillText("Loading hero…", W/2, 360);
   } else if (blink) {
-    ctx.fillText(isTouch ? "Tap to Start" : "Press Enter / Space to Start", W/2, 360);
+    const lv = progress.level > 1 ? " — Level " + progress.level : "";
+    ctx.fillText((isTouch ? "Tap to Start" : "Press Enter / Space to Start") + lv, W/2, 360);
   }
 
   ctx.fillStyle = "#999";
@@ -2893,16 +3203,18 @@ function drawWin() {
   ctx.fillStyle = "#ffe66d";
   ctx.font = "bold 36px sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("Level Complete!", W / 2, 48);
+  const fin = !winStats || winStats.final;
+  ctx.fillText(fin ? "You beat the game!" : "Level " + levelNum + " Complete!", W / 2, 48);
   ctx.fillStyle = "#ff8ec8";
   ctx.font = "15px sans-serif";
-  ctx.fillText("Big Salty Gaming Studio thanks you", W / 2, 74);
+  ctx.fillText(fin ? "All " + LEVELS.length + " levels cleared — Big Salty Gaming Studio thanks you"
+                   : "Big Salty Gaming Studio thanks you — Level " + (levelNum + 1) + " awaits", W / 2, 74);
 
   if (winStats) {
     ctx.fillStyle = "#fff";
     ctx.font = "14px sans-serif";
     ctx.fillText(
-      "Coins " + winStats.coins + "/" + winStats.coinsMax +
+      "Babe drops " + winStats.coins + "/" + winStats.coinsMax +
       "   ·   Babes " + winStats.unique + "/" + BABE_POOL.length +
       "   ·   Pulls " + winStats.total,
       W / 2, 102
@@ -2949,19 +3261,95 @@ function drawWin() {
   ctx.fillStyle = "#ffe66d";
   ctx.font = "bold 16px sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(isTouch ? "Tap to Restart" : "Press R or Enter to Restart", W / 2, H - 48);
+  if (fin) ctx.fillText(isTouch ? "Tap to play again from Level 1" : "Press Enter to play again from Level 1", W / 2, H - 48);
+  else ctx.fillText(isTouch ? "Tap to continue to Level " + (levelNum + 1) : "Press Enter to continue to Level " + (levelNum + 1) + "  ·  R to replay", W / 2, H - 48);
   ctx.fillStyle = "#aaa";
   ctx.font = "13px sans-serif";
   ctx.fillText(isTouch ? "Open Collection to view your babes" : "Press C to view full babe gallery", W / 2, H - 26);
 }
 
 function frame(dt) {
+  if (congrats) {
+    congrats.t += dt;
+    if (Object.keys(justPressed).length) dismissCongrats();
+    else if (congrats.t >= CONGRATS_DUR) dismissCongrats(true);
+    for (const k in justPressed) delete justPressed[k]; // the dismissing press does nothing else
+  } else if (performance.now() - congratsClosedAt < 120) {
+    for (const k in justPressed) delete justPressed[k]; // tap-dismiss on a touch button: swallow its press
+  }
+  const frozen = !!congrats;
+  frameInner(frozen ? 0 : dt);
+  if (congrats) drawCongrats(dt);
+}
+
+function drawCongrats(dt) {
+  const c = congrats, t = c.t;
+  const a = Math.min(1, t / 0.35) * (t > CONGRATS_DUR - 0.5 ? Math.max(0, (CONGRATS_DUR - t) / 0.5) : 1);
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.fillStyle = "rgba(12,4,26,0.72)";
+  ctx.fillRect(0, 0, W, H);
+  // sparkles + drifting confetti
+  for (const sp of c.sparks) {
+    sp.y += sp.vy * dt; if (sp.y > H + 8) { sp.y = -8; sp.x = Math.random() * W; }
+    const tw = 0.4 + 0.6 * Math.abs(Math.sin(t * 3 + sp.p));
+    ctx.globalAlpha = a * tw;
+    ctx.fillStyle = `hsl(${(sp.hue + t * 60) % 360}, 100%, 75%)`;
+    const r = sp.s;
+    ctx.fillRect(sp.x - r, sp.y - 0.5, r * 2, 1.5);
+    ctx.fillRect(sp.x - 0.5, sp.y - r, 1.5, r * 2);
+  }
+  ctx.globalAlpha = a;
+  // panel
+  const pw = 760, ph = 250, px = (W - pw) / 2, py = (H - ph) / 2 - 10;
+  const pop = 1 + 0.06 * Math.max(0, 1 - t / 0.35);
+  ctx.translate(W / 2, py + ph / 2); ctx.scale(pop, pop); ctx.translate(-W / 2, -(py + ph / 2));
+  const bg = ctx.createLinearGradient(px, py, px + pw, py + ph);
+  bg.addColorStop(0, "#3a0f4f"); bg.addColorStop(1, "#5a1640");
+  ctx.fillStyle = bg;
+  roundRect(px, py, pw, ph, 18); ctx.fill();
+  const bd = ctx.createLinearGradient(px, py, px + pw, py);
+  for (let i = 0; i <= 6; i++) bd.addColorStop(i / 6, `hsl(${(i * 60 + t * 120) % 360}, 100%, 65%)`);
+  ctx.strokeStyle = bd; ctx.lineWidth = 4;
+  roundRect(px, py, pw, ph, 18); ctx.stroke();
+  // text (exact copy, split over two lines)
+  const split = CONGRATS_TEXT.indexOf("Life");
+  ctx.textAlign = "center";
+  ctx.shadowColor = "rgba(255,90,154,0.8)"; ctx.shadowBlur = 16;
+  ctx.fillStyle = "#ffe66d";
+  ctx.font = "bold 32px sans-serif";
+  ctx.fillText(CONGRATS_TEXT.slice(0, split).trim(), W / 2, py + 62);
+  ctx.fillStyle = "#ff8ec8";
+  ctx.font = "bold 28px sans-serif";
+  ctx.fillText(CONGRATS_TEXT.slice(split), W / 2, py + 104);
+  ctx.shadowBlur = 0;
+  // all 30 babes as tiny 3:4 faces
+  const cw = 20, chh = cardHeight(cw), gap = 3, rowW = BABE_POOL.length * (cw + gap) - gap;
+  let x0 = W / 2 - rowW / 2;
+  BABE_POOL.forEach((b, i) => {
+    const bob = Math.sin(t * 4 + i * 0.5) * 3;
+    drawCard(b, x0 + i * (cw + gap), py + 128 + bob, cw, chh, { iconOnly: true });
+  });
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 15px sans-serif";
+  ctx.fillText("All " + BABE_POOL.length + " babes collected", W / 2, py + 188);
+  ctx.fillStyle = "rgba(255,255,255,0.7)";
+  ctx.font = "13px sans-serif";
+  ctx.fillText(isTouch ? "Tap to continue" : "Press any key to continue", W / 2, py + 220);
+  // time bar
+  ctx.fillStyle = "rgba(255,255,255,0.15)";
+  ctx.fillRect(px + 40, py + ph - 14, pw - 80, 3);
+  ctx.fillStyle = "#ffe66d";
+  ctx.fillRect(px + 40, py + ph - 14, (pw - 80) * Math.max(0, 1 - t / CONGRATS_DUR), 3);
+  ctx.restore();
+}
+
+function frameInner(dt) {
   if (justPressed["m"]) { ensureAudio(); setMuted(!muted); }
   if (state === "title") {
     drawTitle();
     if ((justPressed[" "] || justPressed["enter"]) && (heroSprites.ready || heroSprites.failed)) {
-      resetLevel(true);
-      state = "play";
+      startLevel(progress.level);
       ensureAudio();
     }
     return;
@@ -2977,7 +3365,7 @@ function frame(dt) {
     drawCollection();
     if (justPressed["c"] || (justPressed["escape"] && !gallery.selected)) {
       gallery.selected = null;
-      state = "play";
+      state = collectionReturn; // back to play, or to the win panel it was opened from
     }
     return;
   }
@@ -2990,11 +3378,9 @@ function frame(dt) {
     drawHUD();
     if (slot) drawSlot();
     drawWin();
-    if (justPressed["r"] || justPressed["enter"]) {
-      resetLevel(true);
-      state = "play";
-    }
-    if (justPressed["c"]) state = "collection";
+    if (justPressed["enter"] || justPressed[" "]) winContinue();
+    else if (justPressed["r"]) startLevel(winStats && winStats.final ? 1 : levelNum); // replay
+    if (justPressed["c"]) openCollection();
     return;
   }
 
@@ -3004,7 +3390,7 @@ function frame(dt) {
   if (slot) updateSlot(dt);
   if (state === "play") {
     updatePlay(dt);
-    if (justPressed["c"]) state = "collection";
+    if (justPressed["c"] && state === "play") openCollection();
   } else if (state === "dying") {
     updateDying(dt);
   } else if (state === "dead") {
@@ -3023,6 +3409,43 @@ function frame(dt) {
   }
   // Slot overlay stays on top (including over death) so the roll remains visible
   if (slot) drawSlot();
+}
+
+// Debug: stitched whole-level overview (rows of 150 tiles) — used for docs/screenshots only
+function renderLevelOverview(n) {
+  const def = LEVELS[(n || levelNum) - 1];
+  const L = buildLevel(def, DIFFICULTY[def.id] || DIFFICULTY[1]);
+  const th = LEVEL_THEMES[def.theme];
+  const S = 6, ROW = 150, rows = Math.ceil(L.width / ROW), rowH = LEVEL_H * S, top = 34, gapY = 22;
+  const cv = document.createElement("canvas");
+  cv.width = ROW * S + 40; cv.height = top + rows * (rowH + gapY) + 10;
+  const g = cv.getContext("2d");
+  g.fillStyle = "#120a1e"; g.fillRect(0, 0, cv.width, cv.height);
+  g.fillStyle = "#ffe66d"; g.font = "bold 15px sans-serif";
+  g.fillText(def.name + " overview — " + L.width + " tiles (" + L.width * TILE + "px), " + L.checkpoints.length + " checkpoints, " +
+    L.picks.length + " babe drops, " + L.enemySlots.length + " enemies, speed x" + L.diff.enemySpeed, 20, 22);
+  for (let r = 0; r < rows; r++) {
+    const ox = 20 - r * ROW * S, oy = top + r * (rowH + gapY);
+    g.save();
+    g.beginPath(); g.rect(20, oy, ROW * S, rowH); g.clip();
+    const sky = g.createLinearGradient(0, oy, 0, oy + rowH);
+    sky.addColorStop(0, th.sky[0]); sky.addColorStop(1, th.sky[2]);
+    g.fillStyle = sky; g.fillRect(20, oy, ROW * S, rowH);
+    for (const p of L.plats) {
+      g.fillStyle = th.dirt; g.fillRect(ox + p.x * S, oy + p.y * S, p.w * S, p.h * S);
+      g.fillStyle = th.grass; g.fillRect(ox + p.x * S, oy + p.y * S, p.w * S, 2);
+    }
+    for (const [tx, ty] of L.picks) { g.fillStyle = "#ff5a9a"; g.fillRect(ox + tx * S + 1, oy + ty * S, 5, 7); g.fillStyle = "#ffe66d"; g.fillRect(ox + tx * S + 3, oy + ty * S + 2, 1, 3); }
+    for (const e of L.enemySlots) { g.fillStyle = e.type === "hopper" ? "#7cff8a" : "#ff4a4a"; g.fillRect(ox + e.x * S, oy + (e.y - 1) * S + 1, 5, 5); }
+    for (const c of L.checkpoints) { const cx = ox + c.x / TILE * S; g.fillStyle = "#fff"; g.fillRect(cx, oy + 11 * S, 1, 4 * S); g.fillStyle = "#ff8ec8"; g.fillRect(cx + 1, oy + 11 * S, 7, 5); }
+    const gx = ox + L.goal.x / TILE * S; g.fillStyle = "#ffe66d"; g.fillRect(gx, oy + 12 * S, 2, 3 * S); g.fillRect(gx + 2, oy + 12 * S, 8, 6);
+    g.restore();
+    g.fillStyle = "#aaa"; g.font = "10px sans-serif";
+    for (let t = r * ROW; t <= Math.min(L.width, (r + 1) * ROW); t += 25) g.fillText(String(t), ox + t * S, oy + rowH + 12);
+  }
+  g.fillStyle = "#ddd"; g.font = "11px sans-serif";
+  g.fillText("pink = babe drop · red = walker · green = hopper · flag = checkpoint · gold = goal", 20, cv.height - 4);
+  return cv.toDataURL("image/png");
 }
 
 // ---------- Main loop ----------
@@ -3050,6 +3473,7 @@ function fit() {
 window.addEventListener("resize", () => { fit(); });
 fit();
 
+loadLevel(progress.level);
 resetLevel(true);
 state = "title";
 preloadHeroSprites().then(ok => {
@@ -3058,6 +3482,7 @@ preloadHeroSprites().then(ok => {
 preloadCardArt().then(() => {
   console.log("[HBC] card art ready");
 }).catch(e => console.warn("[HBC] card art preload", e));
+loadBgm();
 preloadCryAudio().then(() => {
   console.log("[HBC] cry audio ready", { oneshot: cryAudio.oneshotUrl, loop: cryAudio.loopUrl, webaudio: !!cryAudio.oneshotBuf });
 }).catch(e => console.warn("[HBC] cry audio preload", e));
@@ -3082,7 +3507,37 @@ window.__HBC = {
   // Debug: force the next pull(s) to a specific babe / tier (tier data is untouched)
   forcePull: (id) => { if (!babeById(id)) return false; debugPulls.push(id); return true; },
   setDebugRarity: (tier) => { debugRarity = tier || null; },
-  grantBabe: (id, n) => { if (!babeById(id)) return false; collection[id] = clampCount((collection[id] || 0) + (n || 1)); saveCollection(collection); return true; },
+  grantBabe: (id, n) => { if (!babeById(id)) return false; collection[id] = clampCount((collection[id] || 0) + (n || 1)); saveCollection(collection); noteAcquired(id); return true; },
+  // grant one of every babe except `exceptId` (then pull that one to complete the set for real)
+  grantAll: (exceptId) => { for (const b of BABE_POOL) if (b.id !== exceptId && !(collection[b.id] > 0)) { collection[b.id] = 1; noteAcquired(b.id); } saveCollection(collection); return ownedUniqueCount(collection); },
+  resetCompleteFlag: () => { collectionCompleteFlag = false; try { localStorage.removeItem(COMPLETE_KEY); } catch (e) {} },
+  getCongrats: () => congrats && { t: congrats.t, text: CONGRATS_TEXT },
+  isCollectionComplete: () => collectionCompleteFlag,
+  getRecent: () => recentBabes.slice(),
+  getTrayIds: () => recentBabes.filter(id => (collection[id] || 0) > 0).slice(0, HUD_SLOTS).reverse(),
+  getLevel: () => ({ num: levelNum, name: level.name, width: level.width, diff: level.diff, pits: level.pits,
+    platforms: platforms.map(p => ({ ...p })), checkpoints: checkpoints.map(c => ({ ...c })), goal: { ...goal },
+    picks: level.picks.slice(), enemySlots: level.enemySlots.map(e => ({ ...e })), checkpointIdx,
+    TILE, LEVEL_H, physics: { GRAV, MOVE_ACC, MOVE_MAX, FRICTION, JUMP_V, JUMP_CUT, PLAYER_W, PLAYER_H } }),
+  getLevelDefs: () => LEVELS.map(d => d.id),
+  getProgress: () => ({ ...progress }),
+  getBgm: () => ({ mode: bgm.mode, url: bgm.url, wanted: bgm.wanted, starts: bgm.starts, playing: !!bgm.src || !!(bgm.html && !bgm.html.paused),
+    loop: bgm.src ? bgm.src.loop : (bgm.html ? bgm.html.loop : null), loopStart: bgm.loopStart, loopEnd: bgm.loopEnd,
+    duration: bgm.buf ? bgm.buf.duration : null, pos: bgmPosition(), ctx: actx && actx.state, ctxTime: actx && actx.currentTime,
+    musicGain: bgm.gain ? bgm.gain.gain.value : null, master: masterGain ? masterGain.gain.value : null, muted }),
+  // measure output level after masterGain (what the speakers get) and of the music bus alone
+  audioLevels: () => {
+    if (!actx) return null;
+    const mk = (node) => { const a = actx.createAnalyser(); a.fftSize = 2048; node.connect(a); return a; };
+    if (!window.__hbcAn) window.__hbcAn = { out: mk(masterGain), music: bgm.gain ? mk(bgm.gain) : null };
+    if (!window.__hbcAn.music && bgm.gain) window.__hbcAn.music = mk(bgm.gain);
+    const rms = (a) => { if (!a) return null; const d = new Float32Array(a.fftSize); a.getFloatTimeDomainData(d); let s = 0; for (const v of d) s += v * v; return Math.sqrt(s / d.length); };
+    return { out: rms(window.__hbcAn.out), music: rms(window.__hbcAn.music) };
+  },
+  // test-only: jump the playhead close to the loop end to watch the wrap (does not count as a start)
+  bgmJumpNearEnd: (sec) => { if (!bgm.src) return false; const old = bgm.src; const src = actx.createBufferSource(); src.buffer = bgm.buf; src.loop = true; src.loopStart = bgm.loopStart; src.loopEnd = bgm.loopEnd; src.connect(bgm.gain); bgm.offset = bgm.loopEnd - (sec || 1); bgm.t0 = actx.currentTime; src.start(0, bgm.offset); bgm.src = src; old.stop(); old.disconnect(); return true; },
+  teleport: (x, y) => { player.x = x; player.y = y; player.vx = 0; player.vy = 0; player.prevX = x; player.prevY = y; cameraX = Math.max(0, Math.min(x - W * 0.38, LEVEL_W * TILE - W)); },
+  renderOverview: (n) => renderLevelOverview(n),
   getMaxCopies: () => MAX_COPIES,
   isMaxed: (id) => isMaxed(id),
   getPullable: () => pullableBabes().map(b => b.id),
@@ -3152,7 +3607,7 @@ window.__HBC = {
     const idx = Math.round(slot.offset);
     return slot.strip[idx] || null;
   },
-  startPlay: () => { resetLevel(true); state = "play"; },
+  startPlay: (n) => { startLevel(n || levelNum); },
   forceCoin: () => {
     const c = coins.find(x => !x.collected);
     if (c) { player.x = c.x - 4; player.y = c.y - player.h + 4; }
@@ -3164,7 +3619,7 @@ window.__HBC = {
     onCoinCollected();
     return true;
   },
-  openCollection: () => { state = "collection"; gallery.selected = null; },
+  openCollection: () => { gallery.selected = null; openCollection(); },
   setGallerySelected: (id) => { gallery.selected = id; state = "collection"; },
   setGalleryFilter: (f) => { gallery.filter = f; gallery.scroll = 0; },
   getGallery: () => gallery,

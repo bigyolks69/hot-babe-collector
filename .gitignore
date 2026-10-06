@@ -199,3 +199,5 @@ audio/**
 !audio/cry_death.ogg
 !audio/cry_death.mp3
 !audio/cry_death_loop.ogg
+!audio/bgm_main.mp3
+!audio/bgm_main.ogg
