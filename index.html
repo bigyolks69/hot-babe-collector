@@ -267,8 +267,16 @@ function drawSilhouette(cx, cy, size, shape, color, alpha) {
   ctx.restore();
 }
 
+// Canonical card aspect (width/height) from slot-roll card 72×96
+const CARD_ASPECT = 72 / 96; // 3/4
+function cardHeight(w) { return w / CARD_ASPECT; }
+function cardWidth(h) { return h * CARD_ASPECT; }
+
 function drawCard(char, x, y, w, h, opts) {
   opts = opts || {};
+  // Uniform scale only — height always derived from width via CARD_ASPECT
+  w = +w;
+  h = cardHeight(w);
   const rar = rarityOf(char.id);
   const locked = !!opts.locked;
   const glow = opts.glow || 0;
@@ -397,10 +405,13 @@ function makeCoins() {
     [89, 9],   // post-pit high ledge
     [121, 11], // near the goal / end perch
   ];
-  return spots.map(([tx,ty]) => ({
-    x: tx*TILE + 8, y: ty*TILE + 4, w: 16, h: 20,
-    collected: false, bob: Math.random()*Math.PI*2
-  }));
+  return spots.map(([tx,ty]) => {
+    const cw = 15;
+    return {
+      x: tx*TILE + 8, y: ty*TILE + 4, w: cw, h: cardHeight(cw),
+      collected: false, bob: Math.random()*Math.PI*2
+    };
+  });
 }
 
 // Enemies: type 'walker' | 'hopper'
@@ -1057,7 +1068,7 @@ function drawSlot() {
   }
 
   // card window
-  const cw = 72, ch = 96;
+  const cw = 72, ch = cardHeight(72); // canonical 72×96
   const gap = 14;
   const centerX = W/2;
   const cy = panelY + 40;
@@ -1109,7 +1120,7 @@ function drawCollection() {
   ctx.fillText("Press C or Esc to close", W/2, 64);
 
   const cols = 6, rows = 2;
-  const cw = 110, ch = 150, gapX = 24, gapY = 20;
+  const cw = 110, ch = cardHeight(110), gapX = 24, gapY = 20;
   const gridW = cols * cw + (cols - 1) * gapX;
   const startX = (W - gridW) / 2;
   const startY = 90;
@@ -1137,7 +1148,7 @@ function drawTitle() {
   // decorative cards
   for (let i = 0; i < 5; i++) {
     const ch = CHAR_DEFS[i * 2];
-    drawCard(ch, 60 + i * 180, 160 + Math.sin(performance.now()/500 + i)*10, 90, 120, {});
+    drawCard(ch, 60 + i * 180, 160 + Math.sin(performance.now()/500 + i)*10, 90, cardHeight(90), {});
   }
   ctx.fillStyle = "rgba(10,5,20,0.55)";
   ctx.fillRect(0, 0, W, H);
@@ -1164,16 +1175,41 @@ function drawTitle() {
 }
 
 // Compact collection strip for death / win overlays
+function layoutMiniCollection(panelW, maxPanelH) {
+  const cols = 6, rows = 2;
+  const gapX = 8, gapY = 8;
+  const padX = 14, padTop = 28, padBot = 12;
+  const gridW = panelW - padX * 2;
+  let cw = (gridW - gapX * (cols - 1)) / cols;
+  let ch = cardHeight(cw);
+  let contentH = padTop + rows * ch + (rows - 1) * gapY + padBot;
+  if (maxPanelH && contentH > maxPanelH) {
+    // Shrink uniformly so 2 rows fit without squashing
+    const maxCh = (maxPanelH - padTop - padBot - (rows - 1) * gapY) / rows;
+    ch = maxCh;
+    cw = cardWidth(ch);
+    contentH = padTop + rows * ch + (rows - 1) * gapY + padBot;
+  }
+  return { cols, rows, gapX, gapY, padX, padTop, padBot, cw, ch, contentH };
+}
+
 function drawMiniCollection(opts) {
   opts = opts || {};
-  const panelX = opts.x != null ? opts.x : 80;
-  const panelY = opts.y != null ? opts.y : H - 168;
-  const panelW = opts.w != null ? opts.w : W - 160;
-  const panelH = opts.h != null ? opts.h : 128;
+  const panelX = opts.x != null ? opts.x : 100;
+  const panelY = opts.y != null ? opts.y : 175;
+  const panelW = opts.w != null ? opts.w : W - 200;
+  const maxH = opts.maxH != null ? opts.maxH : (H - panelY - 20);
   const lostId = opts.lostId || null;
   const lostPrevCount = opts.lostPrevCount || 0;
   const animT = opts.animT != null ? opts.animT : 0;
   const animDur = opts.animDur != null ? opts.animDur : 2.2;
+
+  const L = layoutMiniCollection(panelW, maxH);
+  const panelH = L.contentH;
+
+  // Center grid horizontally if cards shrank below full width
+  const gridW = L.cols * L.cw + (L.cols - 1) * L.gapX;
+  const gridOriginX = panelX + (panelW - gridW) / 2;
 
   ctx.fillStyle = "rgba(12,8,22,0.88)";
   roundRect(panelX, panelY, panelW, panelH, 12);
@@ -1193,40 +1229,27 @@ function drawMiniCollection(opts) {
   ctx.textAlign = "right";
   ctx.fillText(unique + " / " + CHAR_DEFS.length + " owned", panelX + panelW - 14, panelY + 20);
 
-  const cols = 6, rows = 2;
-  const gapX = 8, gapY = 6;
-  const padX = 14, padTop = 30, padBot = 10;
-  const gridW = panelW - padX * 2;
-  const gridH = panelH - padTop - padBot;
-  const cw = (gridW - gapX * (cols - 1)) / cols;
-  const ch = (gridH - gapY * (rows - 1)) / rows;
-
   for (let i = 0; i < CHAR_DEFS.length; i++) {
-    const col = i % cols, row = Math.floor(i / cols);
-    const x = panelX + padX + col * (cw + gapX);
-    const y = panelY + padTop + row * (ch + gapY);
+    const col = i % L.cols, row = Math.floor(i / L.cols);
+    const x = gridOriginX + col * (L.cw + L.gapX);
+    const y = panelY + L.padTop + row * (L.ch + L.gapY);
     const char = CHAR_DEFS[i];
     const count = collection[char.id] || 0;
     const isLost = lostId && char.id === lostId;
+    const cw = L.cw, ch = L.ch;
 
     ctx.save();
     if (isLost) {
-      // Highlight + fade the lost slot over the death anim
       const u = Math.min(1, animT / animDur);
       const pulse = 0.55 + 0.45 * Math.sin(animT * 10);
       ctx.globalAlpha = Math.max(0.15, 1 - u * 0.85);
-      // Show as still "owned" visually during fade if it went to zero
-      const showCount = count > 0 ? count : Math.max(0, lostPrevCount - 1);
-      const locked = count <= 0 && lostPrevCount <= 1;
       if (count <= 0 && lostPrevCount >= 1) {
-        // draw as the card that is vanishing (was owned)
         drawCard(char, x, y, cw, ch, {
           locked: false,
           count: lostPrevCount > 1 ? lostPrevCount - 1 : null,
           showRarity: false,
           glow: pulse,
         });
-        // red LOST stamp
         ctx.globalAlpha = Math.min(1, 0.4 + u);
         ctx.fillStyle = "rgba(180,20,40,0.55)";
         roundRect(x, y, cw, ch, 6);
@@ -1260,6 +1283,7 @@ function drawMiniCollection(opts) {
     }
     ctx.restore();
   }
+  return { panelH, cw: L.cw, ch: L.ch, ratio: L.cw / L.ch };
 }
 
 function drawDead() {
@@ -1286,7 +1310,8 @@ function drawDead() {
   ctx.fillText("Respawning at checkpoint…", W/2, 154);
 
   drawMiniCollection({
-    x: 100, y: 175, w: W - 200, h: 210,
+    x: 100, y: 168, w: W - 200,
+    maxH: H - 168 - 16,
     lostId: loseAnim && loseAnim.lostId,
     lostPrevCount: loseAnim && loseAnim.lostPrevCount,
     animT: loseAnim ? loseAnim.t : 0,
@@ -1316,15 +1341,15 @@ function drawWin() {
     );
   }
 
-  drawMiniCollection({ x: 100, y: 120, w: W - 200, h: 280 });
+  const mini = drawMiniCollection({ x: 100, y: 118, w: W - 200, maxH: H - 118 - 70 });
 
   ctx.fillStyle = "#ffe66d";
   ctx.font = "bold 16px sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("Press R or Enter to Restart", W/2, H - 48);
+  ctx.fillText("Press R or Enter to Restart", W/2, Math.min(H - 48, 118 + mini.panelH + 28));
   ctx.fillStyle = "#aaa";
   ctx.font = "13px sans-serif";
-  ctx.fillText("Press C to view full collection", W/2, H - 26);
+  ctx.fillText("Press C to view full collection", W/2, Math.min(H - 26, 118 + mini.panelH + 50));
 }
 
 function frame(dt) {
@@ -1420,6 +1445,24 @@ window.__HBC = {
   getCollection: () => collection,
   getSlot: () => slot,
   getSlotQueue: () => slotQueue,
+  getCardAspect: () => CARD_ASPECT,
+  getCardLayouts: () => {
+    const slot = { w: 72, h: cardHeight(72) };
+    const collection = { w: 110, h: cardHeight(110) };
+    const title = { w: 90, h: cardHeight(90) };
+    const world = { w: 15, h: cardHeight(15) };
+    const death = layoutMiniCollection(W - 200, H - 168 - 16);
+    const win = layoutMiniCollection(W - 200, H - 118 - 70);
+    return {
+      aspect: CARD_ASPECT,
+      slot: { ...slot, ratio: slot.w / slot.h },
+      collection: { ...collection, ratio: collection.w / collection.h },
+      title: { ...title, ratio: title.w / title.h },
+      worldPickup: { ...world, ratio: world.w / world.h },
+      miniDeath: { w: death.cw, h: death.ch, ratio: death.cw / death.ch },
+      miniWin: { w: win.cw, h: win.ch, ratio: win.cw / win.ch },
+    };
+  },
   getCenteredCard: () => {
     if (!slot) return null;
     const idx = Math.round(slot.offset);
