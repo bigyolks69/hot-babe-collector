@@ -775,7 +775,7 @@ const player = {
   x: 64, y: 14*TILE - 40, w: 24, h: 36,
   vx: 0, vy: 0, onGround: false,
   facing: 1, coyote: 0, jumpBuf: 0,
-  anim: 0, flash: 0, stun: 0,
+  anim: 0, flash: 0, stun: 0, stompGrace: 0,
 };
 
 function resetLevel(full) {
@@ -806,7 +806,7 @@ function resetLevel(full) {
   player.y = cp.y - player.h;
   player.vx = 0; player.vy = 0;
   player.onGround = false;
-  player.coyote = 0; player.jumpBuf = 0; player.stun = 0;
+  player.coyote = 0; player.jumpBuf = 0; player.stun = 0; player.stompGrace = 0;
   cameraX = Math.max(0, player.x - W*0.35);
 }
 
@@ -853,7 +853,7 @@ function groundUnder(px, feetY) {
 }
 
 function hurtPlayer(fromX) {
-  if (invuln > 0 || state !== "play") return;
+  if (invuln > 0 || player.stompGrace > 0 || state !== "play") return;
   hearts--;
   invuln = 1.4;
   player.flash = 1.4;
@@ -991,6 +991,7 @@ function finishSlot() {
 // ---------- Update ----------
 function updatePlay(dt) {
   if (player.stun > 0) player.stun -= dt;
+  if (player.stompGrace > 0) player.stompGrace -= dt;
 
   // movement (disabled briefly while stunned so knockback reads)
   if (player.stun <= 0) {
@@ -1091,11 +1092,18 @@ function updatePlay(dt) {
     }
 
     if (!aabb(player, e)) continue;
-    // stomp?
-    const stomping = player.vy > 40 && (player.y + player.h) < (e.y + e.h * 0.55);
+    // Mario-style stomp: falling onto top → kill + bounce (no same-frame re-hit)
+    const stomping = player.vy > 40 && (player.y + player.h) <= (e.y + e.h * 0.55);
     if (stomping) {
       e.alive = false;
-      player.vy = JUMP_V * 0.65;
+      // Sit on its head so we don't re-overlap as a side-hit next frame
+      player.y = e.y - player.h;
+      player.onGround = false;
+      // Bounce: solid pop; hold jump for full jump height
+      const jumpHeld = keys[" "] || keys["arrowup"] || keys["w"];
+      player.vy = jumpHeld ? JUMP_V : -480;
+      player.stompGrace = 0.12; // blocks hurt; allows bounce-chain stomps
+      player.jumpBuf = 0;
       sfx.stomp();
       spawnParticles(e.x + e.w/2, e.y + e.h/2, e.type === "hopper" ? "#7dff9a" : "#ff8a5b", 12);
     } else {
@@ -1164,6 +1172,7 @@ function resetAfterDeath() {
   player.x = cp.x; player.y = cp.y - player.h;
   player.vx = 0; player.vy = 0;
   player.stun = 0;
+  player.stompGrace = 0;
   // Respawn coins AND enemies at original positions/state (same as level start)
   coins = makeCoins();
   enemies = makeEnemies();
