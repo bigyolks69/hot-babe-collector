@@ -30,6 +30,14 @@ art/**
 !art/cards/cardback/normal/cardback_15x20.png
 !art/cards/cardback/normal/cardback_110x147.png
 !art/cards/cardback/normal/cardback_440x588.png
+!art/cards/rarity/
+!art/cards/rarity/rare/
+!art/cards/rarity/rare/frame_*.png
+!art/cards/rarity/rare/anim_*.png
+!art/cards/rarity/ultra/
+!art/cards/rarity/ultra/frame_*.png
+!art/cards/rarity/ultra/anim_*.png
+!art/cards/rarity/ultra/holo_*.png
 
 # Audio scratch — ship only cry one-shot (+ loop ogg kept available)
 audio/**

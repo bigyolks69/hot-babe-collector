@@ -533,7 +533,9 @@ const RARITIES = [
 ];
 const RARITY_ORDER = Object.fromEntries(RARITIES.map(r => [r.id, r.order]));
 
-// Placeholder babe defs — ids stable; rarities: 22 Common / 6 Rare / 2 Ultra Rare
+// Placeholder babe defs — ids stable; rarities: 22 Common / 6 Rare / 2 Ultra Rare.
+// Rarity is per-babe data. Named girls (Mika, Sora, Rin, Kaede, Yuki) are always Common;
+// Rare/Ultra live only on anonymous placeholder slots until real tiers are decided.
 const BABE_POOL = [
   // —— Common (22) ——
   { id: "ruby",    name: "Ruby",    rarity: "common", hue: 0,   shape: "hourglass" },
@@ -550,7 +552,7 @@ const BABE_POOL = [
   { id: "haze",    name: "Haze",    rarity: "common", hue: 250, shape: "circle" },
   { id: "iris",    name: "Iris",    rarity: "common", hue: 275, shape: "star" },
   { id: "juno",    name: "Juno",    rarity: "common", hue: 95,  shape: "diamond" },
-  { id: "opal",    name: "Opal",    rarity: "common", hue: 190, shape: "circle" },
+  { id: "yuki",    name: "Yuki",    rarity: "common", hue: 205, shape: "diamond" },
   { id: "piper",   name: "Piper",   rarity: "common", hue: 35,  shape: "heart" },
   { id: "quill",   name: "Quill",   rarity: "common", hue: 210, shape: "star" },
   { id: "raven",   name: "Raven",   rarity: "common", hue: 285, shape: "diamond" },
@@ -567,13 +569,13 @@ const BABE_POOL = [
   { id: "nyx",     name: "Nyx",     rarity: "rare",   hue: 265, shape: "hourglass" },
   // —— Ultra Rare (2) ——
   { id: "aurora",  name: "Aurora",  rarity: "ultra",  hue: 50,  shape: "star" },
-  { id: "yuki",    name: "Yuki",    rarity: "ultra",  hue: 205, shape: "diamond" },
+  { id: "opal",    name: "Opal",    rarity: "ultra",  hue: 190, shape: "circle" },
 ];
 // Map Iris-temp ids from 58dcf8d saves back onto the restored placeholders
 const BABE_ID_MIGRATE = {
   mika: "cleo",
   sora: "daisy",
-  rin: "nyx",
+  rin: "vex",
   kaede: "sage",
 };
 // Alias for older call sites
@@ -586,7 +588,27 @@ function rarityOf(id) {
 }
 function rarityRank(id) { return RARITY_ORDER[(babeById(id) || {}).rarity] || 0; }
 
+// Debug-only pull forcing (never changes tier data):
+//   ?debugPull=<id>[,<id>…]  — next pulls land on these babes, in order
+//   ?debugRarity=rare|ultra — every pull rolls this tier
+//   console: __HBC.forcePull(id), __HBC.setDebugRarity(tier|null)
+const debugPulls = [];
+let debugRarity = null;
+try {
+  const qs = new URLSearchParams(location.search);
+  if (qs.get("debugPull")) debugPulls.push(...qs.get("debugPull").split(",").map(x => x.trim()).filter(Boolean));
+  if (qs.get("debugRarity")) debugRarity = qs.get("debugRarity");
+} catch (e) {}
+
 function rollCharacter() {
+  while (debugPulls.length) {
+    const forced = babeById(debugPulls.shift());
+    if (forced) return forced;
+  }
+  if (debugRarity) {
+    const tierPool = BABE_POOL.filter(c => c.rarity === debugRarity);
+    if (tierPool.length) return tierPool[Math.floor(Math.random() * tierPool.length)];
+  }
   // Tier first (88% / 10% / 2%), then uniform within that tier
   const total = RARITIES.reduce((s, r) => s + r.weight, 0);
   let n = Math.random() * total;
@@ -906,6 +928,48 @@ function drawCardBitmap(img, x, y, w, h, smooth) {
   return true;
 }
 
+// Artist Iris rarity frames (art/cards/rarity/README_rarity.md).
+// Layering @110/440: art (inset 4 units) → ultra holo → frame → name in banner → anim overlay.
+// @15x20: face → anim_15x20 frame (includes the frame).
+const RARITY_ART = {
+  rare:  { frame: {}, holo: {}, anim: { sm: [], md: [], lg: [] } },
+  ultra: { frame: {}, holo: {}, anim: { sm: [], md: [], lg: [] } },
+};
+const RARITY_ANIM = {
+  rare:  { big: { n: 8,  ms: 110, holdMs: 0 },    sm: { n: 4, ms: 180 } },
+  ultra: { big: { n: 12, ms: 70,  holdMs: 1000 }, sm: { n: 4, ms: 180 } }, // hold on frame 11 between sweeps
+};
+function rarityAnimFrame(tier, sizeKey) {
+  const a = RARITY_ANIM[tier];
+  const now = performance.now();
+  if (sizeKey === "sm") return Math.floor(now / a.sm.ms) % a.sm.n;
+  const sweep = a.big.n * a.big.ms;
+  const t = now % (sweep + a.big.holdMs);
+  return Math.min(a.big.n - 1, Math.floor(t / a.big.ms));
+}
+function preloadRarityArt() {
+  const files = { sm: "15x20", md: "110x147", lg: "440x588" };
+  const jobs = [];
+  for (const tier of ["rare", "ultra"]) {
+    const base = "art/cards/rarity/" + tier + "/";
+    const T = RARITY_ART[tier];
+    for (const [key, file] of Object.entries(files)) {
+      jobs.push(loadImg(base + "frame_" + file + ".png").then(im => { T.frame[key] = im; }));
+      const a = RARITY_ANIM[tier];
+      const n = key === "sm" ? a.sm.n : a.big.n;
+      for (let i = 0; i < n; i++) {
+        const nn = String(i).padStart(2, "0");
+        jobs.push(loadImg(base + "anim_" + file + "_" + nn + ".png").then(im => { T.anim[key][i] = im; }));
+      }
+      if (tier === "ultra" && key !== "sm") {
+        jobs.push(loadImg(base + "holo_" + file + ".png").then(im => { T.holo[key] = im; }));
+      }
+    }
+  }
+  return Promise.all(jobs);
+}
+function imgOk(im) { return !!(im && im.complete && im.naturalWidth > 0); }
+
 async function preloadCardArt() {
   const sizes = [
     ["sm", "15x20"],
@@ -917,60 +981,80 @@ async function preloadCardArt() {
     jobs.push(loadImg("art/cards/cardback/A5/cardback_" + file + ".png").then(im => { cardImgs.mystery[key] = im; }));
     jobs.push(loadImg("art/cards/cardback/normal/cardback_" + file + ".png").then(im => { cardImgs.normal[key] = im; }));
   }
+  jobs.push(preloadRarityArt());
   await Promise.all(jobs);
   cardImgs.ready = true;
   return true;
 }
 
 
-/** Tier-distinct placeholder borders until Iris fronts arrive. Same cardback for all. */
-function drawRarityBorderFX(char, x, y, w, h) {
-  const r = char.rarity;
-  if (r !== "rare" && r !== "ultra") return;
-  const t = performance.now() / 1000;
-  ctx.save();
-  if (r === "rare") {
-    // Silver/blue glow + light sparkle
-    const pulse = 8 + Math.sin(t * 4) * 3;
-    ctx.shadowColor = "#7ec8ff";
-    ctx.shadowBlur = pulse;
-    ctx.strokeStyle = "#c8e7ff";
-    ctx.lineWidth = Math.max(2.5, w * 0.045);
-    roundRect(x + 1.5, y + 1.5, w - 3, h - 3, 7);
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = "rgba(200,230,255,0.9)";
-    for (let i = 0; i < 3; i++) {
-      const a = t * 2.2 + i * 2.1;
-      const px = x + w * (0.18 + 0.28 * ((Math.sin(a) + 1) / 2));
-      const py = y + h * (0.15 + 0.25 * ((Math.cos(a * 1.3) + 1) / 2));
-      const s = 1.2 + (Math.sin(a * 3) + 1) * 0.8;
-      ctx.fillRect(Math.floor(px), Math.floor(py), s, s);
-    }
-  } else {
-    // Animated gold/rainbow border + stronger sparkles
-    const hue = (t * 140) % 360;
-    ctx.shadowColor = `hsl(${hue}, 100%, 55%)`;
-    ctx.shadowBlur = 14 + Math.sin(t * 5) * 5;
-    ctx.strokeStyle = `hsl(${(hue + 35) % 360}, 100%, 60%)`;
-    ctx.lineWidth = Math.max(3.5, w * 0.055);
-    roundRect(x + 1, y + 1, w - 2, h - 2, 7);
-    ctx.stroke();
-    ctx.strokeStyle = "#ffe66d";
-    ctx.lineWidth = Math.max(1.5, w * 0.02);
-    ctx.shadowBlur = 6;
-    roundRect(x + 4, y + 4, w - 8, h - 8, 5);
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-    for (let i = 0; i < 8; i++) {
-      const a = t * 3.2 + i * (Math.PI * 2 / 8);
-      const px = x + w / 2 + Math.cos(a) * w * 0.40;
-      const py = y + h / 2 + Math.sin(a) * h * 0.40;
-      ctx.fillStyle = `hsla(${(hue + i * 45) % 360}, 100%, 75%, 0.95)`;
-      ctx.fillRect(Math.floor(px), Math.floor(py), 2.5, 2.5);
-    }
+/** Procedural placeholder art (gradient + silhouette) — the "front" until real art. */
+function drawPlaceholderArt(char, x, y, w, h, iconOnly) {
+  const g = ctx.createLinearGradient(x, y, x, y + h);
+  g.addColorStop(0, `hsl(${char.hue}, 70%, 55%)`);
+  g.addColorStop(0.55, `hsl(${char.hue + 20}, 65%, 35%)`);
+  g.addColorStop(1, `hsl(${char.hue}, 50%, 18%)`);
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, w, h);
+}
+
+/**
+ * Rare / Ultra card: Iris frame assets, closest size, uniform 3:4 scale.
+ * Returns false if the assets aren't loaded yet (caller falls back).
+ */
+function drawRarityFramedCard(char, x, y, w, h, opts, sizeKey) {
+  const tier = char.rarity;
+  const A = RARITY_ART[tier];
+  if (!A) return false;
+  const anim = A.anim[sizeKey][rarityAnimFrame(tier, sizeKey)];
+  const frame = A.frame[sizeKey];
+  if (!imgOk(frame)) return false;
+  const ix = Math.floor(x), iy = Math.floor(y);
+  const iw = Math.max(1, Math.floor(w)), ih = Math.max(1, Math.floor(h));
+  const iconOnly = !!opts.iconOnly;
+
+  if (sizeKey === "sm") {
+    // 15x20: face, then animated frame (frame 00 = static frame). Nearest-neighbour.
+    const px = iw / 15;
+    ctx.save();
+    drawPlaceholderArt(char, ix + px, iy + px, iw - 2 * px, ih - 2 * px);
+    drawSilhouette(ix + iw / 2, iy + ih * 0.5, Math.min(iw, ih) * 0.6, char.shape, "rgba(255,255,255,0.92)");
+    ctx.restore();
+    drawCardBitmap(imgOk(anim) ? anim : frame, ix, iy, iw, ih, false);
+    return true;
   }
+
+  // 110 / 440: smooth only when downscaling
+  const smooth = iw < frame.naturalWidth;
+  const u = iw / 110; // canvas px per frame unit (110-wide basis)
+  // 1) art fitted to the art window (inset 4 units)
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(ix + 4 * u, iy + 4 * u, iw - 8 * u, ih - 8 * u);
+  ctx.clip();
+  drawPlaceholderArt(char, ix, iy, iw, ih);
+  drawSilhouette(ix + iw / 2, iy + ih * 0.42, Math.min(iw, ih) * 0.55, char.shape, "rgba(255,255,255,0.92)");
   ctx.restore();
+  // 2) ultra holo (over art, under frame)
+  if (tier === "ultra" && imgOk(A.holo[sizeKey])) drawCardBitmap(A.holo[sizeKey], ix, iy, iw, ih, smooth);
+  // 3) frame
+  drawCardBitmap(frame, ix, iy, iw, ih, smooth);
+  // 4) name in banner (banner rows ≈124–140 of 147 units)
+  if (!iconOnly) {
+    const fs = Math.max(7, Math.round(10 * u));
+    const by = iy + ih * (135.5 / 147);
+    ctx.save();
+    ctx.font = `bold ${fs}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.fillStyle = "rgba(20,10,30,0.9)";
+    ctx.fillText(char.name, ix + iw / 2 + Math.max(1, u), by + Math.max(1, u));
+    ctx.fillStyle = "#fff";
+    ctx.fillText(char.name, ix + iw / 2, by);
+    ctx.restore();
+  }
+  // 5) animated overlay on top
+  if (imgOk(anim)) drawCardBitmap(anim, ix, iy, iw, ih, smooth);
+  return true;
 }
 
 function drawCard(char, x, y, w, h, opts) {
@@ -1028,6 +1112,13 @@ function drawCard(char, x, y, w, h, opts) {
     return;
   }
 
+  // Owned Rare / Ultra: Iris rarity frames (Common keeps the look below)
+  if ((char.rarity === "rare" || char.rarity === "ultra") &&
+      drawRarityFramedCard(char, x, y, w, h, opts, sizeKey)) {
+    drawCardBadges(char, x, y, w, h, opts, iconOnly);
+    return;
+  }
+
   // Owned: procedural placeholder (Iris fronts deferred)
   const g = ctx.createLinearGradient(x, y, x, y + h);
   g.addColorStop(0, `hsl(${char.hue}, 70%, 55%)`);
@@ -1036,12 +1127,11 @@ function drawCard(char, x, y, w, h, opts) {
   roundRect(x, y, w, h, 8);
   ctx.fillStyle = g;
   ctx.fill();
-  // Base border (common); rare/ultra overlays animated FX below
+  // Base border (common; also rare/ultra fallback while frames load)
   ctx.strokeStyle = rar.color;
   ctx.lineWidth = 3;
   roundRect(x + 1.5, y + 1.5, w - 3, h - 3, 7);
   ctx.stroke();
-  drawRarityBorderFX(char, x, y, w, h);
   ctx.strokeStyle = "rgba(255,255,255,0.25)";
   ctx.lineWidth = 1;
   if (iconOnly) roundRect(x + 3, y + 3, w - 6, h - 6, 4);
@@ -1067,6 +1157,10 @@ function drawCard(char, x, y, w, h, opts) {
     }
   }
 
+  drawCardBadges(char, x, y, w, h, opts, iconOnly);
+}
+
+function drawCardBadges(char, x, y, w, h, opts, iconOnly) {
   // Dupe badge
   if (opts.count != null && opts.count > 1) {
     if (iconOnly) {
@@ -2909,6 +3003,12 @@ window.__HBC = {
   getSlotQueue: () => slotQueue,
   getCallouts: () => callouts.map(c => ({ text: c.text, t: c.t, dur: c.dur, y: c.y, alpha: calloutAlpha(c) })),
   getCalloutTiming: () => ({ fadeIn: CALLOUT_IN, hold: CALLOUT_HOLD, fadeOut: CALLOUT_OUT }),
+  // Debug: force the next pull(s) to a specific babe / tier (tier data is untouched)
+  forcePull: (id) => { if (!babeById(id)) return false; debugPulls.push(id); return true; },
+  setDebugRarity: (tier) => { debugRarity = tier || null; },
+  grantBabe: (id, n) => { if (!babeById(id)) return false; collection[id] = (collection[id] || 0) + (n || 1); saveCollection(collection); return true; },
+  getRarityArt: () => RARITY_ART,
+  getTierCounts: () => BABE_POOL.reduce((m, b) => (m[b.rarity] = (m[b.rarity] || 0) + 1, m), {}),
   getCardAspect: () => CARD_ASPECT,
   getCardImgs: () => cardImgs,
   forceSlotResult: (id) => {
