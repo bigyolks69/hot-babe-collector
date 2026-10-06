@@ -1098,15 +1098,21 @@ function updateDying(dt) {
 
 /** Full-screen black + zoomed cry loop (integer scale, crisp). */
 const DEATH_CRY_SCALE = 6; // 32×48 → 192×288
+const DEATH_FLASH_HOLD = 0.08; // full white
+const DEATH_FLASH_FADE = 0.10; // white → black+cry
 function drawDyingCry() {
+  const t = deathCry ? deathCry.t : 0;
+  // Phase 1: solid white flash (covers everything)
+  if (t < DEATH_FLASH_HOLD) {
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, W, H);
+    return;
+  }
+  // Phase 2+: black + cry, with optional white fade overlay
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, W, H);
   const fr = heroFrameForState();
-  // Fast cut/fade-in from black at start (~0.12s)
-  let alpha = 1;
-  if (deathCry && deathCry.t < 0.12) alpha = deathCry.t / 0.12;
   ctx.save();
-  ctx.globalAlpha = alpha;
   ctx.imageSmoothingEnabled = false;
   const dw = HERO_SW * DEATH_CRY_SCALE;
   const dh = HERO_SH * DEATH_CRY_SCALE;
@@ -1115,11 +1121,18 @@ function drawDyingCry() {
   if (fr.img) {
     ctx.drawImage(fr.img, fr.sx, fr.sy, fr.sw, fr.sh, dx, dy, dw, dh);
   } else {
-    // Fallback silhouette if sprites failed
     ctx.fillStyle = "#6ec8ff";
     ctx.fillRect(dx + dw * 0.25, dy + dh * 0.2, dw * 0.5, dh * 0.7);
   }
   ctx.restore();
+  // White fade into black cry (~0.1s); folded into the same 1.5s window
+  const fadeT = t - DEATH_FLASH_HOLD;
+  if (fadeT < DEATH_FLASH_FADE) {
+    ctx.fillStyle = "#fff";
+    ctx.globalAlpha = 1 - fadeT / DEATH_FLASH_FADE;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
+  }
 }
 
 function spawnParticles(x, y, color, n) {
