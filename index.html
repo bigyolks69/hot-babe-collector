@@ -1061,7 +1061,7 @@ function onHeartsZero() {
     sfx.lose();
   }
   seatPlayerForDeathCry();
-  // ~1.5s in-world cry loop before Ouch overlay; enemies frozen, no input, no re-hit
+  // ~1.5s black-screen zoomed cry before Ouch; enemies frozen, no input, no re-hit
   deathCry = { t: 0, dur: 1.5, lostName, lostId, lostPrevCount };
   loseAnim = null;
   invuln = 99; // belt-and-suspenders vs any stray collision
@@ -1092,12 +1092,34 @@ function updateDying(dt) {
   deathCry.t += dt;
   player.vx = 0;
   player.vy = 0;
-  // Keep camera on the crying hero
-  const target = player.x - W * 0.38;
-  cameraX += (target - cameraX) * Math.min(1, 8 * dt);
-  cameraX = Math.max(0, Math.min(cameraX, LEVEL_W * TILE - W));
-  // Enemies frozen (no update) — cannot re-hit
+  // Enemies frozen (no update) — cannot re-hit; black cry screen handles presentation
   if (deathCry.t >= deathCry.dur) beginOuchScreen();
+}
+
+/** Full-screen black + zoomed cry loop (integer scale, crisp). */
+const DEATH_CRY_SCALE = 6; // 32×48 → 192×288
+function drawDyingCry() {
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, W, H);
+  const fr = heroFrameForState();
+  // Fast cut/fade-in from black at start (~0.12s)
+  let alpha = 1;
+  if (deathCry && deathCry.t < 0.12) alpha = deathCry.t / 0.12;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.imageSmoothingEnabled = false;
+  const dw = HERO_SW * DEATH_CRY_SCALE;
+  const dh = HERO_SH * DEATH_CRY_SCALE;
+  const dx = Math.floor((W - dw) / 2);
+  const dy = Math.floor((H - dh) / 2);
+  if (fr.img) {
+    ctx.drawImage(fr.img, fr.sx, fr.sy, fr.sw, fr.sh, dx, dy, dw, dh);
+  } else {
+    // Fallback silhouette if sprites failed
+    ctx.fillStyle = "#6ec8ff";
+    ctx.fillRect(dx + dw * 0.25, dy + dh * 0.2, dw * 0.5, dh * 0.7);
+  }
+  ctx.restore();
 }
 
 function spawnParticles(x, y, color, n) {
@@ -2156,7 +2178,8 @@ function drawMiniCollection(opts) {
 }
 
 function drawDead() {
-  ctx.fillStyle = "rgba(40,5,15,0.72)";
+  // Solid black — same stage as the cry beat; layout unchanged on top
+  ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = "#ff6b8a";
   ctx.font = "bold 32px sans-serif";
@@ -2373,10 +2396,15 @@ function frame(dt) {
   }
 
   // draw
-  drawBackground();
-  drawWorld();
-  drawHUD();
-  if (state === "dead") drawDead(); // Ouch only after cry delay
+  if (state === "dying") {
+    drawDyingCry(); // black + zoomed cry; hide world/HUD
+  } else if (state === "dead") {
+    drawDead(); // black stage + Ouch layout
+  } else {
+    drawBackground();
+    drawWorld();
+    drawHUD();
+  }
   // Slot overlay stays on top (including over death) so the roll remains visible
   if (slot) drawSlot();
 }
