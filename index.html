@@ -875,7 +875,7 @@ function winContinue() {
 
 function handleCanvasTap(sx, sy) {
   ensureAudio();
-  if (congrats) { dismissCongrats(); return; }
+  if (congrats) return; // only its Continue button closes it (handled in the pointerdown listener)
   if (performance.now() - congratsClosedAt < 300) return; // the dismissing tap does nothing else
   if (state === "title") {
     if (!heroSprites.ready && !heroSprites.failed) return;
@@ -891,8 +891,28 @@ function handleCanvasTap(sx, sy) {
   }
 }
 
-// Any tap / click anywhere (incl. on-screen buttons) dismisses the celebration
-window.addEventListener("pointerdown", () => { if (congrats) dismissCongrats(); }, true);
+// Celebration popup: only a click/tap on its Continue button closes it. While it's up (and for a
+// moment after), taps elsewhere — canvas, on-screen ← → Jump, Collection — are swallowed so they
+// can't act behind it. The mute button keeps working.
+function congratsHit(clientX, clientY) {
+  const { x, y } = canvasCoords(clientX, clientY);
+  const b = congratsLayout().btn, pad = 10;
+  return x >= b.x - pad && x <= b.x + b.w + pad && y >= b.y - pad && y <= b.y + b.h + pad;
+}
+function congratsBlocks(e) {
+  const t = e.target;
+  return (congrats || performance.now() - congratsClosedAt < 300) && !(t && t.closest && t.closest("#muteBtn"));
+}
+window.addEventListener("pointerdown", e => {
+  if (!congrats || !congratsBlocks(e)) return;
+  if (congratsHit(e.clientX, e.clientY)) dismissCongrats();
+  e.stopPropagation();
+}, true);
+["touchstart", "mousedown"].forEach(ev => window.addEventListener(ev, e => {
+  if (!congratsBlocks(e)) return;
+  e.stopPropagation();
+  if (ev === "touchstart" && e.cancelable) e.preventDefault();
+}, { capture: true, passive: false }));
 
 canvas.addEventListener("mousedown", e => {
   if (e.button !== 0) return;
@@ -1657,7 +1677,7 @@ syncRecent();
 // Complete-collection celebration: fires once (flag persisted), right after the completing roll
 const COMPLETE_KEY = "hbc_complete_v1";
 const CONGRATS_TEXT = "Congrats! You completed the collection! Life doesn't suck anymore.";
-const CONGRATS_DUR = 6;
+const CONGRATS_GUARD = 0.4; // input ignored this long after it appears (held jump etc.)
 let collectionCompleteFlag = false;
 try { collectionCompleteFlag = localStorage.getItem(COMPLETE_KEY) === "1"; } catch (e) {}
 let congrats = null; // { t, sparks }
@@ -1672,8 +1692,9 @@ function checkCollectionComplete() {
   try { sfx.win(); } catch (e) {}
 }
 let congratsClosedAt = -1e9;
+// Only the Continue button (click / tap) or Enter closes it; `force` is for debug hooks/tests only
 function dismissCongrats(force) {
-  if (!congrats || (!force && congrats.t < 0.4)) return; // brief grace so a held key doesn't skip it
+  if (!congrats || (!force && congrats.t < CONGRATS_GUARD)) return;
   congrats = null;
   congratsClosedAt = performance.now();
   // Rolls earned meanwhile resume now
@@ -3389,9 +3410,8 @@ function drawWin() {
 function frame(dt) {
   if (congrats) {
     congrats.t += dt;
-    if (Object.keys(justPressed).length) dismissCongrats();
-    else if (congrats.t >= CONGRATS_DUR) dismissCongrats(true);
-    for (const k in justPressed) delete justPressed[k]; // the dismissing press does nothing else
+    if (justPressed["enter"]) dismissCongrats(); // Enter = Continue (after the guard); other keys do nothing
+    for (const k in justPressed) delete justPressed[k]; // swallow every press while it's up
   } else if (performance.now() - congratsClosedAt < 120) {
     for (const k in justPressed) delete justPressed[k]; // tap-dismiss on a touch button: swallow its press
   }
@@ -3400,9 +3420,21 @@ function frame(dt) {
   if (congrats) drawCongrats(dt);
 }
 
+// Popup geometry (canvas units). The Continue button is sized so it is at least ~200x56 CSS px on
+// screen, which makes it a comfortable tap target even on a portrait phone where the canvas is small.
+function congratsLayout() {
+  const r = canvas.getBoundingClientRect();
+  const scale = r.width > 0 ? r.width / W : 1;
+  const bw = Math.min(600, Math.max(240, 200 / scale)), bh = Math.min(140, Math.max(60, 56 / scale));
+  const pw = 760, ph = 196 + bh + 26;
+  const px = (W - pw) / 2, py = Math.max(8, (H - ph) / 2);
+  return { pw, ph, px, py, btn: { x: W / 2 - bw / 2, y: py + 196, w: bw, h: bh } };
+}
+
 function drawCongrats(dt) {
   const c = congrats, t = c.t;
-  const a = Math.min(1, t / 0.35) * (t > CONGRATS_DUR - 0.5 ? Math.max(0, (CONGRATS_DUR - t) / 0.5) : 1);
+  const a = Math.min(1, t / 0.35);
+  const L = congratsLayout(), { pw, ph, px, py, btn } = L;
   ctx.save();
   ctx.globalAlpha = a;
   ctx.fillStyle = "rgba(12,4,26,0.72)";
@@ -3418,8 +3450,6 @@ function drawCongrats(dt) {
     ctx.fillRect(sp.x - 0.5, sp.y - r, 1.5, r * 2);
   }
   ctx.globalAlpha = a;
-  // panel
-  const pw = 760, ph = 250, px = (W - pw) / 2, py = (H - ph) / 2 - 10;
   const pop = 1 + 0.06 * Math.max(0, 1 - t / 0.35);
   ctx.translate(W / 2, py + ph / 2); ctx.scale(pop, pop); ctx.translate(-W / 2, -(py + ph / 2));
   const bg = ctx.createLinearGradient(px, py, px + pw, py + ph);
@@ -3436,29 +3466,38 @@ function drawCongrats(dt) {
   ctx.shadowColor = "rgba(255,90,154,0.8)"; ctx.shadowBlur = 16;
   ctx.fillStyle = "#ffe66d";
   ctx.font = "bold 32px sans-serif";
-  ctx.fillText(CONGRATS_TEXT.slice(0, split).trim(), W / 2, py + 62);
+  ctx.fillText(CONGRATS_TEXT.slice(0, split).trim(), W / 2, py + 54);
   ctx.fillStyle = "#ff8ec8";
   ctx.font = "bold 28px sans-serif";
-  ctx.fillText(CONGRATS_TEXT.slice(split), W / 2, py + 104);
+  ctx.fillText(CONGRATS_TEXT.slice(split), W / 2, py + 94);
   ctx.shadowBlur = 0;
   // all 30 babes as tiny 3:4 faces
   const cw = 20, chh = cardHeight(cw), gap = 3, rowW = BABE_POOL.length * (cw + gap) - gap;
-  let x0 = W / 2 - rowW / 2;
+  const x0 = W / 2 - rowW / 2;
   BABE_POOL.forEach((b, i) => {
     const bob = Math.sin(t * 4 + i * 0.5) * 3;
-    drawCard(b, x0 + i * (cw + gap), py + 128 + bob, cw, chh, { iconOnly: true });
+    drawCard(b, x0 + i * (cw + gap), py + 114 + bob, cw, chh, { iconOnly: true });
   });
   ctx.fillStyle = "#fff";
   ctx.font = "bold 15px sans-serif";
-  ctx.fillText("All " + BABE_POOL.length + " babes collected", W / 2, py + 188);
-  ctx.fillStyle = "rgba(255,255,255,0.7)";
-  ctx.font = "13px sans-serif";
-  ctx.fillText(isTouch ? "Tap to continue" : "Press any key to continue", W / 2, py + 220);
-  // time bar
-  ctx.fillStyle = "rgba(255,255,255,0.15)";
-  ctx.fillRect(px + 40, py + ph - 14, pw - 80, 3);
-  ctx.fillStyle = "#ffe66d";
-  ctx.fillRect(px + 40, py + ph - 14, (pw - 80) * Math.max(0, 1 - t / CONGRATS_DUR), 3);
+  ctx.fillText("All " + BABE_POOL.length + " babes collected", W / 2, py + 174);
+  // Continue button (dimmed during the short input guard)
+  const ready = t >= CONGRATS_GUARD;
+  const glow = ready ? 0.5 + 0.5 * Math.sin(t * 4) : 0;
+  ctx.globalAlpha = a * (ready ? 1 : 0.55);
+  ctx.shadowColor = "rgba(255,230,109,0.9)"; ctx.shadowBlur = 10 + 14 * glow;
+  const bgr = ctx.createLinearGradient(0, btn.y, 0, btn.y + btn.h);
+  bgr.addColorStop(0, "#ff7ab8"); bgr.addColorStop(1, "#e0457f");
+  ctx.fillStyle = bgr;
+  roundRect(btn.x, btn.y, btn.w, btn.h, Math.min(22, btn.h / 2)); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = "#ffe66d"; ctx.lineWidth = 3;
+  roundRect(btn.x, btn.y, btn.w, btn.h, Math.min(22, btn.h / 2)); ctx.stroke();
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold " + Math.round(Math.min(56, btn.h * 0.45)) + "px sans-serif";
+  ctx.textBaseline = "middle";
+  ctx.fillText(isTouch ? "Continue" : "Continue  ⏎", W / 2, btn.y + btn.h / 2 + 1);
+  ctx.textBaseline = "alphabetic";
   ctx.restore();
 }
 
@@ -3636,6 +3675,8 @@ window.__HBC = {
   grantAll: (exceptId) => { for (const b of BABE_POOL) if (b.id !== exceptId && !(collection[b.id] > 0)) { collection[b.id] = 1; noteAcquired(b.id); } saveCollection(collection); return ownedUniqueCount(collection); },
   resetCompleteFlag: () => { collectionCompleteFlag = false; try { localStorage.removeItem(COMPLETE_KEY); } catch (e) {} },
   getCongrats: () => congrats && { t: congrats.t, text: CONGRATS_TEXT },
+  getCongratsButton: () => { if (!congrats) return null; const b = congratsLayout().btn, r = canvas.getBoundingClientRect(), s = r.width / W;
+    return { canvas: b, client: { x: r.left + b.x * s, y: r.top + b.y * s, w: b.w * s, h: b.h * s } }; },
   isCollectionComplete: () => collectionCompleteFlag,
   getRecent: () => recentBabes.slice(),
   getTrayIds: () => recentBabes.filter(id => (collection[id] || 0) > 0).slice(0, HUD_SLOTS).reverse(),
