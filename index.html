@@ -555,7 +555,6 @@ let slot = null; // slot machine overlay (gameplay keeps running)
 let slotQueue = 0; // pending rolls earned while a roll is already playing
 let loseAnim = null;
 let winStats = null;
-let recentPicks = []; // last up to 4 babe ids for HUD tray
 let runGained = [];   // babe ids gained this run (for win screen)
 let gallery = {
   filter: "all", // all | owned | missing | common | rare | epic | legendary
@@ -563,6 +562,17 @@ let gallery = {
   selected: null, // babe id
 };
 const GALLERY_FILTERS = ["all", "owned", "missing", "common", "rare", "epic", "legendary"];
+// Bottom-right HUD: 5-slot window into sorted full pool
+const HUD_SLOTS = 5;
+const HUD_CW = 28;
+const HUD_GAP = 4;
+let hudTray = {
+  scroll: 0,
+  targetScroll: 0,
+  highlightId: null,
+  highlightT: 0,
+};
+let deathGridScroll = 0; // snap-scroll so lost babe is visible
 
 const player = {
   x: 64, y: 14*TILE - 40, w: 24, h: 36,
@@ -585,7 +595,11 @@ function resetLevel(full) {
     checkpointIdx = 0;
     collection = loadCollection();
     runGained = [];
-    recentPicks = [];
+    hudTray.scroll = 0;
+    hudTray.targetScroll = 0;
+    hudTray.highlightId = null;
+    hudTray.highlightT = 0;
+    deathGridScroll = 0;
     gallery.scroll = 0;
     gallery.selected = null;
     gallery.filter = "all";
@@ -692,6 +706,9 @@ function onHeartsZero() {
     sfx.lose();
   }
   loseAnim = { t: 0, name: lostName, lostId, lostPrevCount, dur: 2.2 };
+  if (lostId) focusHudOnBabe(lostId);
+  // Snap death grid so lost babe is centered (computed in drawDead from list)
+  deathGridScroll = -1; // sentinel: recompute once
   state = "dead";
 }
 
@@ -758,9 +775,8 @@ function finishSlot() {
   const prev = collection[id] || 0;
   collection[id] = prev + 1;
   saveCollection(collection);
-  recentPicks.unshift(id);
-  if (recentPicks.length > 4) recentPicks.length = 4;
   runGained.push(id);
+  focusHudOnBabe(id);
   if (prev === 0) {
     addCallout("NEW! " + slot.result.name, "#ffe66d");
     sfx.new();
@@ -1143,22 +1159,22 @@ function drawWorld() {
 }
 
 
-// Tiny always-on babe tray (gameplay only) — ~1/8 area of death mini panel, CARD_ASPECT locked
 function drawHudLiveBabes() {
   if (state !== "play" && state !== "dead") return;
 
-  const thumbs = 4;
-  const cw = 28;
-  const ch = cardHeight(cw);
-  const gap = 4;
-  const pad = 8;
-  const counterH = 18;
-  const panelW = pad * 2 + thumbs * cw + (thumbs - 1) * gap;
+  const list = sortedBabeList();
+  const cw = HUD_CW, ch = cardHeight(cw), gap = HUD_GAP;
+  const pad = 8, counterH = 16;
+  const panelW = pad * 2 + HUD_SLOTS * cw + (HUD_SLOTS - 1) * gap;
   const panelH = pad + counterH + ch + pad;
   const margin = 10;
   const lift = isTouch ? 108 : 18;
   const panelX = W - panelW - margin;
   const panelY = H - panelH - lift;
+  const step = cw + gap;
+  const maxScroll = Math.max(0, (list.length - HUD_SLOTS) * step);
+  hudTray.scroll = Math.max(0, Math.min(maxScroll, hudTray.scroll));
+  hudTray.targetScroll = Math.max(0, Math.min(maxScroll, hudTray.targetScroll));
 
   ctx.save();
   ctx.globalAlpha = 0.78;
@@ -1175,26 +1191,52 @@ function drawHudLiveBabes() {
   ctx.fillStyle = "#ffb0d0";
   ctx.font = "bold 11px sans-serif";
   ctx.textAlign = "left";
-  ctx.fillText("Babes " + unique + "/" + BABE_POOL.length, panelX + pad, panelY + 14);
+  ctx.fillText("Babes " + unique + "/" + BABE_POOL.length, panelX + pad, panelY + 13);
 
-  for (let i = 0; i < thumbs; i++) {
-    const id = recentPicks[i];
-    const x = panelX + pad + i * (cw + gap);
-    const y = panelY + pad + counterH;
-    if (!id) {
-      ctx.globalAlpha = 0.35;
-      ctx.fillStyle = "#2a2a34";
-      roundRect(x, y, cw, ch, 4);
-      ctx.fill();
-      continue;
+  const viewX = panelX + pad;
+  const viewY = panelY + pad + counterH;
+  const viewW = HUD_SLOTS * cw + (HUD_SLOTS - 1) * gap;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(viewX - 1, viewY - 1, viewW + 2, ch + 2);
+  ctx.clip();
+
+  const startIdx = Math.floor(hudTray.scroll / step);
+  const frac = hudTray.scroll - startIdx * step;
+  for (let i = 0; i <= HUD_SLOTS; i++) {
+    const idx = startIdx + i;
+    if (idx < 0 || idx >= list.length) continue;
+    const babe = list[idx];
+    const x = viewX + i * step - frac;
+    const y = viewY;
+    const count = collection[babe.id] || 0;
+    const isLost = state === "dead" && loseAnim && loseAnim.lostId === babe.id;
+    const isHL = hudTray.highlightId === babe.id && hudTray.highlightT > 0;
+    ctx.globalAlpha = count > 0 || isLost ? 0.95 : 0.5;
+    if (isLost) {
+      const displayCount = count > 0 ? count : (loseAnim.lostPrevCount > 1 ? loseAnim.lostPrevCount - 1 : null);
+      drawCard(babe, x, y, cw, ch, {
+        locked: false,
+        count: displayCount && displayCount > 1 ? displayCount : null,
+        iconOnly: true,
+      });
+      drawLostBabeX(x, y, cw, ch, loseAnim.t);
+    } else {
+      drawCard(babe, x, y, cw, ch, {
+        locked: count === 0,
+        iconOnly: true,
+        count: count > 1 ? count : null,
+      });
     }
-    const babe = babeById(id);
-    if (!babe) continue;
-    const isLost = state === "dead" && loseAnim && loseAnim.lostId === id;
-    ctx.globalAlpha = 0.95;
-    drawCard(babe, x, y, cw, ch, { locked: false, iconOnly: true });
-    if (isLost) drawLostBabeX(x, y, cw, ch, loseAnim.t);
+    if (isHL) {
+      const pulse = 0.5 + 0.5 * Math.sin((0.55 - hudTray.highlightT) * 20);
+      ctx.strokeStyle = `rgba(255,230,109,${0.55 + 0.45 * pulse})`;
+      ctx.lineWidth = 2;
+      roundRect(x - 1, y - 1, cw + 2, ch + 2, 5);
+      ctx.stroke();
+    }
   }
+  ctx.restore();
   ctx.restore();
 }
 
@@ -1311,6 +1353,34 @@ function drawSlot() {
     ctx.font = "bold 14px sans-serif";
     ctx.fillText(slot.result.name + " — " + rar.label, W/2, panelY + panelH - 12);
   }
+}
+
+function sortedBabeList() {
+  return BABE_POOL.slice().sort((a, b) => {
+    const rd = rarityRank(a.id) - rarityRank(b.id);
+    if (rd !== 0) return rd;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+function focusHudOnBabe(id) {
+  if (!id) return;
+  const list = sortedBabeList();
+  const idx = list.findIndex(b => b.id === id);
+  if (idx < 0) return;
+  const step = HUD_CW + HUD_GAP;
+  let scroll = (idx - Math.floor(HUD_SLOTS / 2)) * step;
+  const maxScroll = Math.max(0, (list.length - HUD_SLOTS) * step);
+  hudTray.targetScroll = Math.max(0, Math.min(maxScroll, scroll));
+  hudTray.highlightId = id;
+  hudTray.highlightT = 0.55;
+}
+
+function updateHudTray(dt) {
+  const d = hudTray.targetScroll - hudTray.scroll;
+  hudTray.scroll += d * Math.min(1, 14 * dt);
+  if (Math.abs(d) < 0.4) hudTray.scroll = hudTray.targetScroll;
+  if (hudTray.highlightT > 0) hudTray.highlightT -= dt;
 }
 
 function galleryFilteredList() {
@@ -1670,46 +1740,97 @@ function drawMiniCollection(opts) {
 }
 
 function drawDead() {
-  ctx.fillStyle = "rgba(40,5,15,0.7)";
+  ctx.fillStyle = "rgba(40,5,15,0.72)";
   ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = "#ff6b8a";
-  ctx.font = "bold 36px sans-serif";
+  ctx.font = "bold 32px sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("Ouch!", W / 2, 90);
+  ctx.fillText("Ouch!", W / 2, 48);
   const unique = ownedUniqueCount(collection);
   ctx.fillStyle = "#ffb0d0";
-  ctx.font = "14px sans-serif";
-  ctx.fillText("Babes owned: " + unique + "/" + BABE_POOL.length, W / 2, 122);
+  ctx.font = "13px sans-serif";
+  ctx.fillText("Babes owned: " + unique + "/" + BABE_POOL.length, W / 2, 72);
 
-  if (loseAnim && loseAnim.lostId) {
-    const babe = babeById(loseAnim.lostId);
+  if (loseAnim && loseAnim.name) {
     ctx.fillStyle = "#ffe66d";
-    ctx.font = "bold 22px sans-serif";
-    ctx.fillText("LOST: " + (loseAnim.name || "???"), W / 2, 160);
+    ctx.font = "bold 20px sans-serif";
+    ctx.fillText("LOST: " + loseAnim.name, W / 2, 98);
+    ctx.fillStyle = "#bbb";
+    ctx.font = "12px sans-serif";
+    ctx.fillText("A random babe was taken from your collection", W / 2, 118);
+  } else {
     ctx.fillStyle = "#ccc";
-    ctx.font = "13px sans-serif";
-    ctx.fillText("A random babe was taken from your collection", W / 2, 186);
-    if (babe) {
-      const cw = 140, ch = cardHeight(cw);
-      const x = (W - cw) / 2, y = 210;
-      const displayCount = (collection[babe.id] || 0) > 0
-        ? collection[babe.id]
-        : (loseAnim.lostPrevCount > 1 ? loseAnim.lostPrevCount - 1 : null);
+    ctx.font = "14px sans-serif";
+    ctx.fillText("No babes to lose… this time.", W / 2, 100);
+  }
+
+  // Gallery-style grid (rarity→name), auto-scrolled to lost babe
+  const list = sortedBabeList();
+  const cols = 6;
+  const cw = 92, ch = cardHeight(cw), gapX = 12, gapY = 10;
+  const panelX = 48, panelY = 132;
+  const panelW = W - 96;
+  const panelH = H - panelY - 40;
+  const gridW = cols * cw + (cols - 1) * gapX;
+  const startX = panelX + (panelW - gridW) / 2;
+  const rows = Math.ceil(list.length / cols);
+  const contentH = rows * ch + (rows - 1) * gapY;
+  const maxScroll = Math.max(0, contentH - panelH + 8);
+
+  let focusIdx = loseAnim && loseAnim.lostId
+    ? list.findIndex(b => b.id === loseAnim.lostId) : -1;
+  if (deathGridScroll < 0) {
+    if (focusIdx >= 0) {
+      const row = Math.floor(focusIdx / cols);
+      const rowY = row * (ch + gapY);
+      deathGridScroll = Math.max(0, Math.min(maxScroll, rowY - (panelH - ch) / 2));
+    } else {
+      deathGridScroll = 0;
+    }
+  }
+  deathGridScroll = Math.max(0, Math.min(maxScroll, deathGridScroll));
+
+  ctx.fillStyle = "rgba(12,8,22,0.88)";
+  roundRect(panelX, panelY, panelW, panelH, 12);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,90,154,0.5)";
+  ctx.lineWidth = 2;
+  roundRect(panelX, panelY, panelW, panelH, 12);
+  ctx.stroke();
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(panelX + 4, panelY + 4, panelW - 8, panelH - 8);
+  ctx.clip();
+
+  for (let i = 0; i < list.length; i++) {
+    const col = i % cols, row = Math.floor(i / cols);
+    const x = startX + col * (cw + gapX);
+    const y = panelY + 10 + row * (ch + gapY) - deathGridScroll;
+    if (y + ch < panelY || y > panelY + panelH) continue;
+    const babe = list[i];
+    const count = collection[babe.id] || 0;
+    const isLost = loseAnim && loseAnim.lostId === babe.id;
+    if (isLost) {
+      const displayCount = count > 0 ? count : (loseAnim.lostPrevCount > 1 ? loseAnim.lostPrevCount - 1 : null);
       drawCard(babe, x, y, cw, ch, {
         locked: false,
         count: displayCount,
-        showRarity: true,
       });
       drawLostBabeX(x, y, cw, ch, loseAnim.t);
+    } else {
+      drawCard(babe, x, y, cw, ch, {
+        locked: count === 0,
+        count: count > 0 ? count : null,
+      });
     }
-  } else {
-    ctx.fillStyle = "#ccc";
-    ctx.font = "16px sans-serif";
-    ctx.fillText("No babes to lose… this time.", W / 2, 170);
   }
+  ctx.restore();
+
   ctx.fillStyle = "#aaa";
-  ctx.font = "13px sans-serif";
-  ctx.fillText("Respawning at checkpoint…", W / 2, H - 36);
+  ctx.font = "12px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("Respawning at checkpoint…", W / 2, H - 14);
 }
 
 function drawWin() {
@@ -1824,6 +1945,7 @@ function frame(dt) {
 
   // update — gameplay + slot overlay run together
   updateParticles(dt);
+  updateHudTray(dt);
   if (slot) updateSlot(dt);
   if (state === "play") {
     updatePlay(dt);
@@ -1894,7 +2016,7 @@ window.__HBC = {
       worldPickup: { ...world, ratio: world.w / world.h },
       miniDeath: { ...death, ratio: death.w / death.h },
       miniWin: { ...win, ratio: win.w / win.h },
-      hudLive: { ...hud, ratio: hud.w / hud.h },
+      hudLive: { w: HUD_CW, h: cardHeight(HUD_CW), ratio: HUD_CW / cardHeight(HUD_CW) },
     };
   },
   getLoseAnim: () => loseAnim,
@@ -1921,8 +2043,9 @@ window.__HBC = {
   setGalleryFilter: (f) => { gallery.filter = f; gallery.scroll = 0; },
   getGallery: () => gallery,
   getBabePool: () => BABE_POOL,
-  getRecentPicks: () => recentPicks,
   getRunGained: () => runGained,
+  getHudTray: () => hudTray,
+  focusHudOnBabe: (id) => focusHudOnBabe(id),
 };
 </script>
 </body>

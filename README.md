@@ -21,12 +21,12 @@ On touch devices, on-screen buttons appear (← → jump C).
 ## Design notes (prototype)
 
 - **Babe pool**: **30** data-driven placeholders in `BABE_POOL` (append entries to grow). Shared **3:4** aspect (`CARD_ASPECT = 72/96`).
-- **HUD**: bottom-right live tray — `Babes N/30` plus the last **4** pickup thumbs (icon-only, 3:4).
+- **HUD**: bottom-right 5-slot window into the sorted 30-babe list (`Babes N/30`, icon-only 3:4); slides to focus gains/losses with a brief highlight.
 - **Gallery (C)**: scrollable grid, rarity→name sort, filters All / Owned / Missing / Common / Rare / Epic / Legendary, click for detail.
 - **Collectibles**: **6** babe-coins in the level (sparse). Respawns on death.
 - **Coins → babes**: ~1.2s slot roll overlay (gameplay continues); queued pickups; pre-planted result (no snap).
 - **Hearts**: 3 HP. Hit = knockback (~290 px/s away, vy −280) + 0.25s stun + invuln flash. Stomp from above.
-- **Death**: shows the **lost babe** with a fast pen-stroke red X + owned count (not the full grid). Pit = full wipe + lose one babe.
+- **Death**: gallery-style scrolled grid (rarity→name) with the lost babe crossed by a pen-stroke red X; owned count in header. Pit = full wipe + lose one babe.
 - **Win**: babes gained this run (scrollable row) + totals.
 - **Save**: `hbc_collection_v1` counts map; also writes `hbc_collection_v2` wrapper (v1 still loaded/migrated).
 
