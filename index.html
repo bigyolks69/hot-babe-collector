@@ -1508,8 +1508,9 @@ const SECTIONS = {
   rooftopRun: { w: 18, plats: [
       G(0, 18), P(6, 13, 3), P(11, 12, 3) ],
     picks: [[7, 11], [12, 10]], enemies: [], cps: [2] },
-  // Boss arena (~1 screen / 30 tiles). Entrance is the checkpoint; the goal is unlocked after the defeat.
-  bossArena: { w: 30, plats: [G(0, 30), P(4, 11, 3), P(23, 11, 3)],
+  // Boss arena (~1 screen / 30 tiles). Entrance CP; goal unlocks after defeat.
+  // Side ledges at y=13 (2 tiles / 64px) — within max jump ~2.73 tiles; old y=11 was unreachable.
+  bossArena: { w: 30, plats: [G(0, 30), P(4, 13, 3), P(23, 13, 3)],
     picks: [], enemies: [], cps: [1], goal: 26 },
 };
 
@@ -2324,7 +2325,8 @@ function finishSlot() {
 
 // ---------- Gacha Machine Demon (Level 3 boss) ----------
 // 3 HP. Attacks telegraph clearly; the glowing crank is only stompable while it "jams"
-// after an attack (smoke + "OUT OF ORDER"). Death resets HP + clears minions/projectiles
+// after an attack (smoke + "OUT OF ORDER"). Hit → stunned recovery (cyan flash) before hostile.
+// Death resets HP + clears minions/projectiles
 // and parks the player at the arena entrance. Defeat → shake → rare-or-better slot pull → final win.
 const BOSS_HP = 3;
 const BOSS_W = 4 * TILE;   // 128
@@ -2334,6 +2336,7 @@ const BOSS_BEAM_WARN = 0.6, BOSS_BEAM_FIRE = 0.55, BOSS_BEAM_FIRE_LOW = 0.2;
 const BOSS_COIN_N = [3, 4, 5];     // coins per spit by phase (1–3)
 const BOSS_MINION_N = [2, 3, 4];
 const BOSS_VULN = [1.6, 1.35, 1.15];
+const BOSS_HIT_STUN = 1.15; // post-stomp recovery before hostile again
 const BOSS_IDLE = [1.1, 0.85, 0.65];
 const BOSS_ATTACKS = ["beam", "coins", "minions"];
 
@@ -2377,7 +2380,7 @@ function resetBossFight() {
   if (!boss) return;
   // Clear fight-only state; keep position / arena / caps
   boss.hp = BOSS_HP; boss.phase = 0; boss.mode = "idle"; boss.modeT = 0; boss.nextAtk = 0;
-  boss.beam = null; boss.coins = []; boss.minions = [];
+  boss.beam = null; boss.coins = []; clearBossMinions();
   boss.shake = 0; boss.flash = 0; boss.grin = 0; boss.rewardPending = false; boss.defeated = false;
   // Remove the temporary walls so the next entry re-locks cleanly
   if (boss.wallPlats.length) {
@@ -2432,19 +2435,37 @@ function beginBossAttack(kind) {
     }
     boss.grin = 0.6;
   } else if (kind === "minions") {
+    clearBossMinions();
     const n = BOSS_MINION_N[bossPhase()];
-    boss.minions = [];
+    const sp = (level && level.diff && level.diff.enemySpeed) || 1;
+    const minX = boss.arenaL + 8, maxX = boss.x - 8;
     for (let i = 0; i < n; i++) {
-      const mx = boss.arenaL + 40 + i * 70 + Math.random() * 20;
-      boss.minions.push({
-        type: "minion", x: mx, y: GROUND_Y * TILE - 28, w: 22, h: 28,
-        vx: 55 + bossPhase() * 12, vy: 0, dir: Math.random() < 0.5 ? -1 : 1,
-        alive: true, hopT: Math.random() * 0.4, hopEvery: 0.85 - bossPhase() * 0.08,
-        minX: boss.arenaL + 8, maxX: boss.x - 8, bob: Math.random() * 6, prevX: mx, prevY: GROUND_Y * TILE - 28,
+      const hop = i % 2 === 1; // alternate Mini Oni walker / Mochi Slime hopper
+      const mxTile = (boss.arenaL + 40 + i * 70) / TILE;
+      const e = enemyOnPlat(hop ? "hopper" : "walker", mxTile, GROUND_Y, hop ? 26 : 28, hop ? 26 : 28, {
+        vx: (hop ? 40 : 55 + bossPhase() * 10) * sp,
+        dir: Math.random() < 0.5 ? -1 : 1,
+        minX, maxX,
+        hopT: hop ? Math.random() * 0.4 : 0,
+        hopEvery: hop ? (0.95 - bossPhase() * 0.08) / sp : 1.1,
+        bossMinion: true,
       });
+      // Clamp into the arena walk band
+      e.x = Math.max(minX, Math.min(maxX - e.w, e.x));
+      e.prevX = e.x; e.prevY = e.y;
+      enemies.push(e);
+      boss.minions.push(e);
     }
     boss.grin = 0.5;
   }
+}
+
+function clearBossMinions() {
+  if (!boss) return;
+  for (const m of boss.minions) { m.alive = false; m.squishT = 99; }
+  boss.minions = [];
+  // Drop spent boss-minion corpses from the shared enemies list
+  enemies = enemies.filter(e => !e.bossMinion);
 }
 
 function beginBossVulnerable() {
@@ -2457,23 +2478,29 @@ function beginBossVulnerable() {
 function hitBoss() {
   if (!boss || boss.mode !== "vulnerable") return false;
   boss.hp--; boss.phase++;
-  boss.shake = 0.55; boss.flash = 0;
-  player.vy = STOMP_V_HELD; player.fromStomp = true; player.stompGrace = 0.15;
+  boss.shake = 0.7;
+  player.vy = STOMP_V_HELD; player.fromStomp = true; player.stompGrace = 0.4;
   player.onGround = false; player.jumpBuf = 0;
+  // Nudge off the crank so we don't re-land on the cabinet
+  player.vx = (player.x + player.w / 2 < boss.x + boss.w / 2 ? -1 : 1) * 180;
   sfx.stomp();
-  spawnParticles(boss.x + boss.w / 2, boss.y + boss.h / 2, "#ff5ec8", 18);
-  spawnParticles(boss.x + boss.w / 2, boss.y + 40, "#ffe66d", 10);
-  boss.minions.forEach(m => { m.alive = false; });
-  boss.coins = [];
+  spawnParticles(boss.x + boss.w / 2, boss.y + boss.h / 2, "#5ef0ff", 18);
+  spawnParticles(boss.x + boss.w / 2, boss.y + 40, "#ffffff", 12);
+  clearBossMinions();
+  boss.coins = []; boss.beam = null;
   if (boss.hp <= 0) beginBossDefeat();
-  else { boss.mode = "idle"; boss.modeT = 0; boss.nextAtk = 0.4; addCallout("Gacha jammed! ×" + (BOSS_HP - boss.hp), "#ff8ec8"); }
+  else {
+    // Stunned recovery: no contact damage / no attacks; cyan-white flash, then idle telegraph
+    boss.mode = "stunned"; boss.modeT = 0; boss.flash = BOSS_HIT_STUN; boss.grin = 0;
+    addCallout("Gacha jammed! ×" + (BOSS_HP - boss.hp), "#5ef0ff");
+  }
   return true;
 }
 
 function beginBossDefeat() {
   boss.mode = "defeat"; boss.modeT = 0; boss.defeated = true;
   boss.shake = 1.8; boss.beam = null; boss.coins = [];
-  boss.minions.forEach(m => { m.alive = false; });
+  clearBossMinions();
   addCallout("GACHA DEMON DOWN!", "#ffe66d");
   sfx.win();
 }
@@ -2520,29 +2547,8 @@ function updateBoss(dt) {
     if (aabb(player, c) && invuln <= 0) { hurtPlayer(c.x); boss.coins.splice(i, 1); }
   }
 
-  // Minions (cardback hoppers)
-  for (const m of boss.minions) {
-    if (!m.alive) continue;
-    m.prevX = m.x; m.prevY = m.y; m.bob += dt * 4;
-    if (m.x < m.minX) { m.x = m.minX; m.dir = 1; }
-    if (m.x + m.w > m.maxX) { m.x = m.maxX - m.w; m.dir = -1; }
-    m.x += m.vx * m.dir * dt;
-    m.vy += GRAV * 0.9 * dt; m.y += m.vy * dt;
-    const top = platformTopNear(m.x, m.w, m.y + m.h);
-    if (top != null && m.y + m.h >= top - 1 && m.vy >= 0) {
-      m.y = top - m.h; m.vy = 0; m.hopT += dt;
-      if (m.hopT > m.hopEvery) { m.vy = -480; m.hopT = 0; }
-    }
-    if (!aabb(player, m)) continue;
-    const prevPB = (player.prevY != null ? player.prevY : player.y) + player.h;
-    const fromAbove = prevPB <= (m.prevY != null ? m.prevY : m.y) + 8;
-    if (fromAbove || (player.y + player.h <= m.y + m.h * 0.55 && player.y < m.y)) {
-      m.alive = false; player.vy = STOMP_V; player.fromStomp = true; player.stompGrace = 0.12;
-      player.onGround = false; sfx.stomp();
-      spawnParticles(m.x + m.w / 2, m.y + m.h / 2, "#ffb0d0", 8);
-    } else hurtPlayer(m.x + m.w / 2);
-  }
-  boss.minions = boss.minions.filter(m => m.alive || (m.deadT = (m.deadT || 0) + dt) < 0.3);
+  // Boss minions live in `enemies` (walker/hopper AI + stomp rules). Keep the ref list tidy.
+  boss.minions = boss.minions.filter(m => m.alive || (m.squishT != null && m.squishT < ENEMY_SQUISH_SHOW));
 
   // Beam
   if (boss.beam) {
@@ -2564,7 +2570,7 @@ function updateBoss(dt) {
       const prevPB = (player.prevY != null ? player.prevY : player.y) + player.h;
       if (prevPB <= crank.y + 10 && player.vy >= 0) hitBoss();
     }
-  } else if (boss.mode !== "defeat" && boss.mode !== "done") {
+  } else if (boss.mode !== "defeat" && boss.mode !== "done" && boss.mode !== "stunned") {
     // Body contact hurts (not stomping the body — only the crank is a weak point)
     if (aabb(player, boss) && invuln <= 0 && player.stompGrace <= 0) hurtPlayer(boss.x + boss.w / 2);
   }
@@ -2581,6 +2587,8 @@ function updateBoss(dt) {
   } else if (boss.mode === "minions") {
     // Vulnerable once minions are gone, or after a timeout so the fight can't stall
     if ((boss.minions.every(m => !m.alive) && boss.modeT > 0.6) || boss.modeT > 5.5) beginBossVulnerable();
+  } else if (boss.mode === "stunned") {
+    if (boss.modeT >= BOSS_HIT_STUN) { boss.mode = "idle"; boss.modeT = 0; boss.nextAtk = 0.6; boss.flash = 0; }
   } else if (boss.mode === "vulnerable") {
     if (boss.modeT >= BOSS_VULN[ph]) { boss.mode = "idle"; boss.modeT = 0; boss.nextAtk = 0.3; }
   } else if (boss.mode === "defeat") {
@@ -2599,8 +2607,20 @@ function drawBoss() {
   body.addColorStop(0, "#2a1040"); body.addColorStop(0.5, "#5a1a6a"); body.addColorStop(1, "#1a0a30");
   ctx.fillStyle = body;
   roundRect(bx + 8, by + 48, boss.w - 16, boss.h - 48, 10); ctx.fill();
-  ctx.strokeStyle = "#ff5ec8"; ctx.lineWidth = 3;
+  ctx.strokeStyle = (boss.mode === "stunned") ? "#5ef0ff" : "#ff5ec8"; ctx.lineWidth = 3;
   roundRect(bx + 8, by + 48, boss.w - 16, boss.h - 48, 10); ctx.stroke();
+  if (boss.mode === "stunned") {
+    const pulse = 0.25 + 0.2 * Math.abs(Math.sin(boss.t * 14));
+    ctx.fillStyle = `rgba(255,255,255,${pulse})`;
+    roundRect(bx + 8, by + 48, boss.w - 16, boss.h - 48, 10); ctx.fill();
+    // Smoke while recovering
+    for (let i = 0; i < 5; i++) {
+      const sx = bx + 24 + i * 20 + Math.sin(boss.t * 4 + i) * 5;
+      const sy = by + 36 - ((boss.modeT * 40 + i * 10) % 55);
+      ctx.fillStyle = `rgba(200,230,255,${0.4 - i * 0.05})`;
+      ctx.beginPath(); ctx.arc(sx, sy, 7 + (i % 3), 0, Math.PI * 2); ctx.fill();
+    }
+  }
   // Neon trim stripes
   ctx.fillStyle = "#5ef0ff"; ctx.fillRect(bx + 14, by + 56, boss.w - 28, 4);
   ctx.fillStyle = "#ffe66d"; ctx.fillRect(bx + 14, by + boss.h - 18, boss.w - 28, 4);
@@ -2622,9 +2642,10 @@ function drawBoss() {
     if (babe) drawCard(babe, px - 7.5, py - 10, 15, 20, { iconOnly: true });
   }
   ctx.restore();
-  // Demon face
-  const eyeY = by + 100, eyeOpen = boss.mode === "vulnerable" ? 3 : 6;
-  ctx.fillStyle = boss.mode === "vulnerable" ? "#888" : "#ff3a5a";
+  // Demon face (stunned = cyan/white, vulnerable = dim, else hostile red)
+  const stunned = boss.mode === "stunned";
+  const eyeY = by + 100, eyeOpen = (boss.mode === "vulnerable" || stunned) ? 3 : 6;
+  ctx.fillStyle = stunned ? "#5ef0ff" : boss.mode === "vulnerable" ? "#888" : "#ff3a5a";
   ctx.beginPath(); ctx.ellipse(bx + 40, eyeY, 8, eyeOpen, 0, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.ellipse(bx + boss.w - 40, eyeY, 8, eyeOpen, 0, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = "#ffe66d";
@@ -2646,7 +2667,8 @@ function drawBoss() {
   // Crank / weak point
   const cr = bossCrankRect();
   const vuln = boss.mode === "vulnerable";
-  ctx.fillStyle = vuln ? "#ffe66d" : "#ff5ec8";
+  const stun = boss.mode === "stunned";
+  ctx.fillStyle = stun ? "#ffffff" : vuln ? "#ffe66d" : "#ff5ec8";
   ctx.beginPath(); ctx.arc(cr.x + cr.w / 2 + sk, cr.y + cr.h / 2, cr.w / 2, 0, Math.PI * 2); ctx.fill();
   ctx.strokeStyle = vuln ? "#fff" : "#5ef0ff"; ctx.lineWidth = vuln ? 3 : 2; ctx.stroke();
   ctx.fillStyle = "#2a1040";
@@ -2665,9 +2687,13 @@ function drawBoss() {
     ctx.fillStyle = "#ffe66d"; ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
     ctx.fillText("OUT OF ORDER", bx + boss.w / 2, by + 160);
   }
+  if (stun) {
+    ctx.fillStyle = "#5ef0ff"; ctx.font = "bold 12px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("STUNNED", bx + boss.w / 2, by + 160);
+  }
   // Nameplate
   ctx.fillStyle = "rgba(0,0,0,0.55)"; roundRect(bx + 16, by + boss.h - 36, boss.w - 32, 18, 4); ctx.fill();
-  ctx.fillStyle = "#ff8ec8"; ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
+  ctx.fillStyle = stun ? "#5ef0ff" : "#ff8ec8"; ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
   ctx.fillText("GACHA MACHINE DEMON", bx + boss.w / 2, by + boss.h - 23);
 
   // Beam telegraph / fire
@@ -2695,12 +2721,7 @@ function drawBoss() {
     ctx.fillStyle = "#c4a020"; ctx.font = "bold 9px sans-serif"; ctx.textAlign = "center";
     ctx.fillText("¥", 0, 3); ctx.restore();
   }
-  // Fake-pull minions (mystery cardbacks)
-  for (const m of boss.minions) {
-    if (!m.alive && (m.deadT || 0) > 0.05) continue;
-    const bob = Math.sin(m.bob) * 2;
-    drawCard(CHAR_DEFS[0], m.x, m.y + bob, m.w, m.h, { iconOnly: true, locked: true });
-  }
+  // Minions are drawn with the normal enemy pass (Mini Oni / Mochi Slime).
 }
 
 function drawBossHud() {
