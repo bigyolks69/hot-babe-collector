@@ -533,53 +533,56 @@ const RARITIES = [
 ];
 const RARITY_ORDER = Object.fromEntries(RARITIES.map(r => [r.id, r.order]));
 
-// Babe defs — ids stable; rarities: 22 Common / 6 Rare / 2 Ultra Rare.
-// Rarity is per-babe data. Named girls (Mika, Sora, Rin, Kaede, Yuki) are always Common;
-// Rare/Ultra live only on anonymous placeholder slots until real tiers are decided.
-// `front`: Iris v3 card front (frame + name banner baked in) → art/cards/v3/card_<front>_<size>.png
+// Final 30-girl roster (Artist Iris; art/cards/final/manifest.json, roster order).
+// Rarities set by the user: Ultra = Luna, Carmilla; Rare = Sora, Hana, Tomoe, Natsu, Yume, Mina; rest Common.
+// Art (see babeArtUrl): Common → art/cards/v3/card_<id>_<size>.png (as-is)
+//                       Rare   → art/cards/final/rare/card_<id>_rare_<size>.png + shared rarity/rare/anim_* sheen
+//                       Ultra  → art/cards/final/ultra/frames/card_<id>_ultra_<size>_NN.png (baked, cycled as-is)
+// hue/shape only drive the procedural fallback if an image fails to load.
 const BABE_POOL = [
-  // —— Common (22): 5 real girls + 17 placeholders ——
-  { id: "mika",    name: "Mika",    rarity: "common", hue: 330, shape: "heart",     front: "mika" },
-  { id: "sora",    name: "Sora",    rarity: "common", hue: 55,  shape: "star",      front: "sora" },
-  { id: "rin",     name: "Rin",     rarity: "common", hue: 270, shape: "circle",    front: "rin" },
-  { id: "kaede",   name: "Kaede",   rarity: "common", hue: 18,  shape: "diamond",   front: "kaede" },
-  { id: "yuki",    name: "Yuki",    rarity: "common", hue: 205, shape: "diamond",   front: "yuki" },
-  { id: "ruby",    name: "Ruby",    rarity: "common", hue: 0,   shape: "hourglass" },
-  { id: "luna",    name: "Luna",    rarity: "common", hue: 220, shape: "star" },
-  { id: "jade",    name: "Jade",    rarity: "common", hue: 140, shape: "diamond" },
-  { id: "nova",    name: "Nova",    rarity: "common", hue: 40,  shape: "circle" },
-  { id: "sol",     name: "Sol",     rarity: "common", hue: 15,  shape: "hourglass" },
-  { id: "ember",   name: "Ember",   rarity: "common", hue: 18,  shape: "diamond" },
-  { id: "faye",    name: "Faye",    rarity: "common", hue: 200, shape: "heart" },
-  { id: "gigi",    name: "Gigi",    rarity: "common", hue: 160, shape: "hourglass" },
-  { id: "haze",    name: "Haze",    rarity: "common", hue: 250, shape: "circle" },
-  { id: "iris",    name: "Iris",    rarity: "common", hue: 275, shape: "star" },
-  { id: "juno",    name: "Juno",    rarity: "common", hue: 95,  shape: "diamond" },
-  { id: "piper",   name: "Piper",   rarity: "common", hue: 35,  shape: "heart" },
-  { id: "quill",   name: "Quill",   rarity: "common", hue: 210, shape: "star" },
-  { id: "raven",   name: "Raven",   rarity: "common", hue: 285, shape: "diamond" },
-  { id: "tess",    name: "Tess",    rarity: "common", hue: 10,  shape: "hourglass" },
-  { id: "uma",     name: "Uma",     rarity: "common", hue: 310, shape: "star" },
-  { id: "wren",    name: "Wren",    rarity: "common", hue: 175, shape: "heart" },
-  // —— Rare (6) ——
-  { id: "kira",    name: "Kira",    rarity: "rare",   hue: 300, shape: "heart" },
-  { id: "mira",    name: "Mira",    rarity: "rare",   hue: 180, shape: "hourglass" },
-  { id: "suki",    name: "Suki",    rarity: "rare",   hue: 25,  shape: "star" },
-  { id: "zara",    name: "Zara",    rarity: "rare",   hue: 330, shape: "diamond" },
-  { id: "ivy",     name: "Ivy",     rarity: "rare",   hue: 110, shape: "heart" },
-  { id: "nyx",     name: "Nyx",     rarity: "rare",   hue: 265, shape: "hourglass" },
-  // —— Ultra Rare (2) ——
-  { id: "aurora",  name: "Aurora",  rarity: "ultra",  hue: 50,  shape: "star" },
-  { id: "opal",    name: "Opal",    rarity: "ultra",  hue: 190, shape: "circle" },
+  { id: "mika",     name: "Mika",     rarity: "common", banner: "#d62828", hue: 0,    shape: "heart" },
+  { id: "sora",     name: "Sora",     rarity: "rare",   banner: "#288cdc", hue: 207, shape: "star" },
+  { id: "rin",      name: "Rin",      rarity: "common", banner: "#f05aa0", hue: 332, shape: "circle" },
+  { id: "kaede",    name: "Kaede",    rarity: "common", banner: "#f0b41e", hue: 43,   shape: "diamond" },
+  { id: "yuki",     name: "Yuki",     rarity: "common", banner: "#826ec8", hue: 253, shape: "hourglass" },
+  { id: "hana",     name: "Hana",     rarity: "rare",   banner: "#78b946", hue: 94,   shape: "heart" },
+  { id: "aya",      name: "Aya",      rarity: "common", banner: "#c81e46", hue: 346, shape: "star" },
+  { id: "nami",     name: "Nami",     rarity: "common", banner: "#14b4a5", hue: 174, shape: "circle" },
+  { id: "momo",     name: "Momo",     rarity: "common", banner: "#f58287", hue: 357, shape: "diamond" },
+  { id: "reiko",    name: "Reiko",    rarity: "common", banner: "#8c142d", hue: 348, shape: "hourglass" },
+  { id: "saya",     name: "Saya",     rarity: "common", banner: "#464655", hue: 240, shape: "heart" },
+  { id: "noa",      name: "Noa",      rarity: "common", banner: "#e6d732", hue: 55,   shape: "star" },
+  { id: "tomoe",    name: "Tomoe",    rarity: "rare",   banner: "#28327d", hue: 233, shape: "circle" },
+  { id: "akane",    name: "Akane",    rarity: "common", banner: "#c85014", hue: 20,   shape: "diamond" },
+  { id: "hikari",   name: "Hikari",   rarity: "common", banner: "#e132aa", hue: 319, shape: "hourglass" },
+  { id: "misaki",   name: "Misaki",   rarity: "common", banner: "#8cb496", hue: 135, shape: "heart" },
+  { id: "natsu",    name: "Natsu",    rarity: "rare",   banner: "#3c6496", hue: 213, shape: "star" },
+  { id: "lena",     name: "Lena",     rarity: "common", banner: "#8cbee1", hue: 205, shape: "circle" },
+  { id: "mai",      name: "Mai",      rarity: "common", banner: "#d796eb", hue: 286, shape: "diamond" },
+  { id: "yume",     name: "Yume",     rarity: "rare",   banner: "#5a73f5", hue: 230, shape: "hourglass" },
+  { id: "izumi",    name: "Izumi",    rarity: "common", banner: "#be9b69", hue: 35,   shape: "heart" },
+  { id: "kana",     name: "Kana",     rarity: "common", banner: "#784b2d", hue: 24,   shape: "star" },
+  { id: "ruri",     name: "Ruri",     rarity: "common", banner: "#192db9", hue: 232, shape: "circle" },
+  { id: "asuka",    name: "Asuka",    rarity: "common", banner: "#fa8214", hue: 29,   shape: "diamond" },
+  { id: "chiyo",    name: "Chiyo",    rarity: "common", banner: "#147341", hue: 148, shape: "hourglass" },
+  { id: "kiko",     name: "Kiko",     rarity: "common", banner: "#00c8eb", hue: 189, shape: "heart" },
+  { id: "rumi",     name: "Rumi",     rarity: "common", banner: "#6edcaa", hue: 153, shape: "star" },
+  { id: "mina",     name: "Mina",     rarity: "rare",   banner: "#ff785a", hue: 11,   shape: "circle" },
+  { id: "luna",     name: "Luna",     rarity: "ultra",  banner: "#8c28be", hue: 280, shape: "diamond" },
+  { id: "carmilla", name: "Carmilla", rarity: "ultra",  banner: "#910a05", hue: 2,    shape: "hourglass" },
 ];
-// Saves: placeholders replaced by the real v3 girls carry their counts over
-// (these were where 58dcf8d's Iris-temp girls had been folded back to).
+// Old saves: placeholders replaced by real girls in 3bfac1f carry their counts over.
+// Every other placeholder id (Kira, Mira, Suki, Zara, Ivy, Nyx, Aurora, Opal, Faye, …) is dropped.
 const BABE_ID_MIGRATE = {
   cleo: "mika",
   daisy: "sora",
   vex: "rin",
   sage: "kaede",
 };
+// Placeholder ids that collide with a real girl's id: in pre-final saves they meant the
+// placeholder (e.g. old Common "luna" ≠ Ultra Luna), so they're dropped, not carried over.
+const LEGACY_PLACEHOLDER_IDS = new Set(["luna"]);
+const ROSTER_VERSION = 2; // bump when ids change meaning; stored in the v2 save
 // Alias for older call sites
 const CHAR_DEFS = BABE_POOL;
 
@@ -643,12 +646,13 @@ function totalPulls(col) {
 // ---------- localStorage collection (v1 counts map; v2 wraps same map) ----------
 const SAVE_KEY = "hbc_collection_v1";
 const SAVE_KEY_V2 = "hbc_collection_v2";
-function migrateCollectionCounts(col) {
+function migrateCollectionCounts(col, legacy) {
   if (!col || typeof col !== "object") return {};
   const out = {};
   for (const [k, v] of Object.entries(col)) {
     const n = +v || 0;
-    if (n <= 0) continue;
+    if (!(n > 0)) continue;
+    if (legacy && LEGACY_PLACEHOLDER_IDS.has(k)) continue; // old placeholder, not the real girl
     const id = BABE_ID_MIGRATE[k] || k;
     if (!babeById(id)) continue; // drop unknown / removed placeholders
     out[id] = clampCount((out[id] || 0) + n); // never above MAX_COPIES
@@ -658,10 +662,14 @@ function migrateCollectionCounts(col) {
 function loadCollection() {
   try {
     let counts = null;
+    let legacy = true; // saves written before the final roster
     const v2 = localStorage.getItem(SAVE_KEY_V2);
     if (v2) {
       const obj = JSON.parse(v2);
-      if (obj && typeof obj === "object" && obj.counts && typeof obj.counts === "object") counts = obj.counts;
+      if (obj && typeof obj === "object" && obj.counts && typeof obj.counts === "object") {
+        counts = obj.counts;
+        legacy = obj.roster !== ROSTER_VERSION;
+      }
     }
     if (!counts) {
       const raw = localStorage.getItem(SAVE_KEY);
@@ -670,11 +678,11 @@ function loadCollection() {
       if (obj && typeof obj === "object") counts = obj;
     }
     if (!counts) return {};
-    const migrated = migrateCollectionCounts(counts);
+    const migrated = migrateCollectionCounts(counts, legacy);
     // Persist cleaned map so removed ids don't linger
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(migrated));
-      localStorage.setItem(SAVE_KEY_V2, JSON.stringify({ v: 2, counts: migrated }));
+      localStorage.setItem(SAVE_KEY_V2, JSON.stringify({ v: 2, roster: ROSTER_VERSION, counts: migrated }));
     } catch {}
     return migrated;
   } catch { return {}; }
@@ -683,7 +691,7 @@ function saveCollection(col) {
   for (const k of Object.keys(col)) col[k] = clampCount(col[k]); // hard cap on every save
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify(col)); // keep v1 readable
-    localStorage.setItem(SAVE_KEY_V2, JSON.stringify({ v: 2, counts: col }));
+    localStorage.setItem(SAVE_KEY_V2, JSON.stringify({ v: 2, roster: ROSTER_VERSION, counts: col }));
   } catch {}
 }
 
@@ -961,16 +969,11 @@ function drawCardBitmap(img, x, y, w, h, smooth) {
   return true;
 }
 
-// Artist Iris rarity frames (art/cards/rarity/README_rarity.md).
-// Layering @110/440: art (inset 4 units) → ultra holo → frame → name in banner → anim overlay.
-// @15x20: face → anim_15x20 frame (includes the frame).
-const RARITY_ART = {
-  rare:  { frame: {}, holo: {}, anim: { sm: [], md: [], lg: [] } },
-  ultra: { frame: {}, holo: {}, anim: { sm: [], md: [], lg: [] } },
-};
+// ---------- Babe card art (final roster) ----------
+// Animation timing (art/cards/rarity/README_rarity.md + final/MANIFEST.md)
 const RARITY_ANIM = {
-  rare:  { big: { n: 8,  ms: 110, holdMs: 0 },    sm: { n: 4, ms: 180 } },
-  ultra: { big: { n: 12, ms: 70,  holdMs: 1000 }, sm: { n: 4, ms: 180 } }, // hold on frame 11 between sweeps
+  rare:  { big: { n: 8,  ms: 110, holdMs: 0 },    sm: { n: 4, ms: 180 } },  // shared sheen overlay
+  ultra: { big: { n: 12, ms: 70,  holdMs: 1000 }, sm: { n: 4, ms: 180 } },  // baked frames; hold on 11
 };
 function rarityAnimFrame(tier, sizeKey) {
   const a = RARITY_ANIM[tier];
@@ -980,63 +983,94 @@ function rarityAnimFrame(tier, sizeKey) {
   const t = now % (sweep + a.big.holdMs);
   return Math.min(a.big.n - 1, Math.floor(t / a.big.ms));
 }
-function preloadRarityArt() {
-  const files = { sm: "15x20", md: "110x147", lg: "440x588" };
-  const jobs = [];
-  for (const tier of ["rare", "ultra"]) {
-    const base = "art/cards/rarity/" + tier + "/";
-    const T = RARITY_ART[tier];
-    for (const [key, file] of Object.entries(files)) {
-      jobs.push(loadImg(base + "frame_" + file + ".png").then(im => { T.frame[key] = im; }));
-      const a = RARITY_ANIM[tier];
-      const n = key === "sm" ? a.sm.n : a.big.n;
-      for (let i = 0; i < n; i++) {
-        const nn = String(i).padStart(2, "0");
-        jobs.push(loadImg(base + "anim_" + file + "_" + nn + ".png").then(im => { T.anim[key][i] = im; }));
-      }
-      if (tier === "ultra" && key !== "sm") {
-        jobs.push(loadImg(base + "holo_" + file + ".png").then(im => { T.holo[key] = im; }));
-      }
-    }
-  }
-  return Promise.all(jobs);
-}
 function imgOk(im) { return !!(im && im.complete && im.naturalWidth > 0); }
 
-// v3 girl fronts: sm/md preloaded; lg (≈350KB each) loads on first big draw.
-const FRONT_FILES = { sm: "15x20", md: "110x147", lg: "440x588" };
-const frontImgs = {}; // id -> { sm, md, lg } (Image | "loading" | null)
-function requestFront(babe, key) {
-  const slotObj = frontImgs[babe.id] || (frontImgs[babe.id] = {});
-  if (slotObj[key] === undefined) {
-    slotObj[key] = "loading";
-    loadImg("art/cards/v3/card_" + babe.front + "_" + FRONT_FILES[key] + ".png").then(im => { slotObj[key] = im; });
-  }
-  const im = slotObj[key];
-  return imgOk(im) ? im : null;
+// URL-keyed image cache. img(url) returns a decoded Image or null (and starts loading it).
+const IMG_CACHE = new Map(); // url -> Image | null (failed) | "loading"
+function img(url) {
+  const v = IMG_CACHE.get(url);
+  if (v === undefined) { preloadUrls([url]); return null; }
+  return imgOk(v) ? v : null;
 }
-function preloadFronts() {
-  const jobs = [];
-  for (const b of BABE_POOL) {
-    if (!b.front) continue;
-    for (const key of ["sm", "md"]) {
-      const slotObj = frontImgs[b.id] || (frontImgs[b.id] = {});
-      slotObj[key] = "loading";
-      jobs.push(loadImg("art/cards/v3/card_" + b.front + "_" + FRONT_FILES[key] + ".png").then(im => { slotObj[key] = im; }));
+function preloadUrls(urls) {
+  return Promise.all(urls.map(u => {
+    if (IMG_CACHE.has(u)) return null;
+    IMG_CACHE.set(u, "loading");
+    return loadImg(u).then(im => {
+      IMG_CACHE.set(u, im);
+      if (!im) console.warn("[HBC] missing card art", u);
+    });
+  }));
+}
+
+const ART_FILES = { sm: "15x20", md: "110x147", lg: "440x588" };
+const pad2 = i => String(i).padStart(2, "0");
+/** Static card for a babe at a size (Ultra: the still = frame 00 without shine). */
+function babeArtUrl(b, key) {
+  const f = ART_FILES[key];
+  if (b.rarity === "rare") return "art/cards/final/rare/card_" + b.id + "_rare_" + f + ".png";
+  if (b.rarity === "ultra") return "art/cards/final/ultra/card_" + b.id + "_ultra_" + f + ".png";
+  return "art/cards/v3/card_" + b.id + "_" + f + ".png";
+}
+function ultraFrameUrl(b, key, i) {
+  return "art/cards/final/ultra/frames/card_" + b.id + "_ultra_" + ART_FILES[key] + "_" + pad2(i) + ".png";
+}
+function rareSheenUrl(key, i) {
+  return "art/cards/rarity/rare/anim_" + ART_FILES[key] + "_" + pad2(i) + ".png";
+}
+function animFrameCount(tier, key) { const a = RARITY_ANIM[tier]; return key === "sm" ? a.sm.n : a.big.n; }
+// Ultra frames stream in per babe+size the first time they're drawn (440s are ~375KB each)
+const ultraWarm = new Set();
+function warmUltra(b, key) {
+  const k = b.id + ":" + key;
+  if (ultraWarm.has(k)) return;
+  ultraWarm.add(k);
+  const urls = [];
+  for (let i = 0; i < animFrameCount("ultra", key); i++) urls.push(ultraFrameUrl(b, key, i));
+  preloadUrls(urls);
+}
+function framesReady(b, key) {
+  for (let i = 0; i < animFrameCount("ultra", key); i++) if (!img(ultraFrameUrl(b, key, i))) return false;
+  return true;
+}
+
+/**
+ * Draw a babe's final card, uniform 3:4, closest size: 15x20 for tiny spots (nearest-neighbour),
+ * 110x147 up to 110px wide, 440x588 above that (lazy; 110 shown while it streams in).
+ * Returns false if nothing is loaded yet (caller draws the procedural fallback).
+ */
+function drawBabeArt(b, x, y, w, h, sizeKey) {
+  const want = sizeKey === "sm" ? "sm" : (Math.floor(w) <= 110 ? "md" : "lg");
+  const keys = want === "lg" ? ["lg", "md"] : [want];
+  for (const key of keys) {
+    let base = null;
+    if (b.rarity === "ultra") {
+      warmUltra(b, key);
+      // cycle the baked frames once all of them are in; until then show the still
+      base = framesReady(b, key) ? img(ultraFrameUrl(b, key, rarityAnimFrame("ultra", key))) : null;
+      if (!base) base = img(babeArtUrl(b, key));
+    } else {
+      base = img(babeArtUrl(b, key));
     }
+    if (!base) continue;
+    const smooth = key !== "sm" && Math.floor(w) < base.naturalWidth;
+    drawCardBitmap(base, x, y, w, h, smooth);
+    if (b.rarity === "rare") {
+      const sheen = img(rareSheenUrl(key, rarityAnimFrame("rare", key)));
+      if (sheen) drawCardBitmap(sheen, x, y, w, h, smooth);
+    }
+    return true;
   }
-  return Promise.all(jobs);
+  return false;
 }
-/** Draw a v3 front as-is (no extra frame). Returns false if not loaded yet. */
-function drawFrontCard(babe, x, y, w, h, sizeKey) {
-  // Painted fronts: never upscale the 110 — anything wider than 110px uses the 440
-  if (sizeKey !== "sm") sizeKey = Math.floor(w) <= 110 ? "md" : "lg";
-  let im = requestFront(babe, sizeKey);
-  if (!im && sizeKey === "lg") im = requestFront(babe, "md"); // while 440 streams in
-  if (!im) return false;
-  // 15x20 face crop: nearest-neighbour; bigger: smooth only when downscaling
-  const smooth = sizeKey !== "sm" && Math.floor(w) < im.naturalWidth;
-  return drawCardBitmap(im, x, y, w, h, smooth);
+
+// First load: every babe's 15x20 + 110x147 still and the small rare sheen frames.
+// 440s and the Ultra animation frames load lazily when first drawn.
+function preloadBabeArt() {
+  const urls = [];
+  for (const b of BABE_POOL) for (const key of ["sm", "md"]) urls.push(babeArtUrl(b, key));
+  for (const key of ["sm", "md"]) for (let i = 0; i < animFrameCount("rare", key); i++) urls.push(rareSheenUrl(key, i));
+  return preloadUrls(urls);
 }
 
 async function preloadCardArt() {
@@ -1050,80 +1084,9 @@ async function preloadCardArt() {
     jobs.push(loadImg("art/cards/cardback/A5/cardback_" + file + ".png").then(im => { cardImgs.mystery[key] = im; }));
     jobs.push(loadImg("art/cards/cardback/normal/cardback_" + file + ".png").then(im => { cardImgs.normal[key] = im; }));
   }
-  jobs.push(preloadRarityArt());
-  jobs.push(preloadFronts());
+  jobs.push(preloadBabeArt());
   await Promise.all(jobs);
   cardImgs.ready = true;
-  return true;
-}
-
-
-/** Procedural placeholder art (gradient + silhouette) — the "front" until real art. */
-function drawPlaceholderArt(char, x, y, w, h, iconOnly) {
-  const g = ctx.createLinearGradient(x, y, x, y + h);
-  g.addColorStop(0, `hsl(${char.hue}, 70%, 55%)`);
-  g.addColorStop(0.55, `hsl(${char.hue + 20}, 65%, 35%)`);
-  g.addColorStop(1, `hsl(${char.hue}, 50%, 18%)`);
-  ctx.fillStyle = g;
-  ctx.fillRect(x, y, w, h);
-}
-
-/**
- * Rare / Ultra card: Iris frame assets, closest size, uniform 3:4 scale.
- * Returns false if the assets aren't loaded yet (caller falls back).
- */
-function drawRarityFramedCard(char, x, y, w, h, opts, sizeKey) {
-  const tier = char.rarity;
-  const A = RARITY_ART[tier];
-  if (!A) return false;
-  const anim = A.anim[sizeKey][rarityAnimFrame(tier, sizeKey)];
-  const frame = A.frame[sizeKey];
-  if (!imgOk(frame)) return false;
-  const ix = Math.floor(x), iy = Math.floor(y);
-  const iw = Math.max(1, Math.floor(w)), ih = Math.max(1, Math.floor(h));
-  const iconOnly = !!opts.iconOnly;
-
-  if (sizeKey === "sm") {
-    // 15x20: face, then animated frame (frame 00 = static frame). Nearest-neighbour.
-    const px = iw / 15;
-    ctx.save();
-    drawPlaceholderArt(char, ix + px, iy + px, iw - 2 * px, ih - 2 * px);
-    drawSilhouette(ix + iw / 2, iy + ih * 0.5, Math.min(iw, ih) * 0.6, char.shape, "rgba(255,255,255,0.92)");
-    ctx.restore();
-    drawCardBitmap(imgOk(anim) ? anim : frame, ix, iy, iw, ih, false);
-    return true;
-  }
-
-  // 110 / 440: smooth only when downscaling
-  const smooth = iw < frame.naturalWidth;
-  const u = iw / 110; // canvas px per frame unit (110-wide basis)
-  // 1) art fitted to the art window (inset 4 units)
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(ix + 4 * u, iy + 4 * u, iw - 8 * u, ih - 8 * u);
-  ctx.clip();
-  drawPlaceholderArt(char, ix, iy, iw, ih);
-  drawSilhouette(ix + iw / 2, iy + ih * 0.42, Math.min(iw, ih) * 0.55, char.shape, "rgba(255,255,255,0.92)");
-  ctx.restore();
-  // 2) ultra holo (over art, under frame)
-  if (tier === "ultra" && imgOk(A.holo[sizeKey])) drawCardBitmap(A.holo[sizeKey], ix, iy, iw, ih, smooth);
-  // 3) frame
-  drawCardBitmap(frame, ix, iy, iw, ih, smooth);
-  // 4) name in banner (banner rows ≈124–140 of 147 units)
-  if (!iconOnly) {
-    const fs = Math.max(7, Math.round(10 * u));
-    const by = iy + ih * (135.5 / 147);
-    ctx.save();
-    ctx.font = `bold ${fs}px sans-serif`;
-    ctx.textAlign = "center";
-    ctx.fillStyle = "rgba(20,10,30,0.9)";
-    ctx.fillText(char.name, ix + iw / 2 + Math.max(1, u), by + Math.max(1, u));
-    ctx.fillStyle = "#fff";
-    ctx.fillText(char.name, ix + iw / 2, by);
-    ctx.restore();
-  }
-  // 5) animated overlay on top
-  if (imgOk(anim)) drawCardBitmap(anim, ix, iy, iw, ih, smooth);
   return true;
 }
 
@@ -1182,20 +1145,13 @@ function drawCard(char, x, y, w, h, opts) {
     return;
   }
 
-  // Owned real girl: v3 front as-is (frame + name banner baked in)
-  if (char.front && drawFrontCard(char, x, y, w, h, sizeKey)) {
+  // Owned: the girl's final card (frame + name banner baked in)
+  if (drawBabeArt(char, x, y, w, h, sizeKey)) {
     drawCardBadges(char, x, y, w, h, opts, iconOnly);
     return;
   }
 
-  // Owned Rare / Ultra: Iris rarity frames (Common keeps the look below)
-  if ((char.rarity === "rare" || char.rarity === "ultra") &&
-      drawRarityFramedCard(char, x, y, w, h, opts, sizeKey)) {
-    drawCardBadges(char, x, y, w, h, opts, iconOnly);
-    return;
-  }
-
-  // Owned: procedural placeholder (Iris fronts deferred)
+  // Fallback while art loads / if a file is missing: procedural card
   const g = ctx.createLinearGradient(x, y, x, y + h);
   g.addColorStop(0, `hsl(${char.hue}, 70%, 55%)`);
   g.addColorStop(0.55, `hsl(${char.hue + 20}, 65%, 35%)`);
@@ -1752,6 +1708,8 @@ function beginSlotRoll() {
   // Offset eases exactly to that index — no end snap/swap.
   const result = rollCharacter();
   if (!result) { addCallout("All babes maxed out!", "#ffe66d"); return false; }
+  // Start streaming the result's slot-size art now so it's animated when it lands
+  if (result.rarity === "ultra") warmUltra(result, "md"); else img(babeArtUrl(result, "md"));
   const targetIndex = 24;
   const strip = [];
   // Filler: babes still in the pool (fall back to everyone when few remain, so the strip looks full)
@@ -3130,7 +3088,12 @@ window.__HBC = {
   getPullable: () => pullableBabes().map(b => b.id),
   rollMany: (n) => { const m = {}; for (let i = 0; i < n; i++) { const b = rollCharacter(); const k = b ? b.id : "(none)"; m[k] = (m[k] || 0) + 1; } return m; },
   setCount: (id, n) => { if (!babeById(id)) return false; const c = clampCount(n); if (c > 0) collection[id] = c; else delete collection[id]; saveCollection(collection); return true; },
-  getRarityArt: () => RARITY_ART,
+  getArtCache: () => { let ok = 0, loading = 0, failed = 0, bytes = 0; const bad = [];
+    for (const [u, v] of IMG_CACHE) { if (v === "loading") loading++; else if (imgOk(v)) { ok++; bytes += v.naturalWidth * v.naturalHeight * 4; } else { failed++; bad.push(u); } }
+    return { ok, loading, failed, bad, decodedMB: +(bytes / 1048576).toFixed(1) }; },
+  babeArtUrls: (id) => { const b = babeById(id); if (!b) return null; const out = ["sm", "md", "lg"].map(k => babeArtUrl(b, k));
+    if (b.rarity === "ultra") for (const k of ["sm", "md", "lg"]) for (let i = 0; i < animFrameCount("ultra", k); i++) out.push(ultraFrameUrl(b, k, i));
+    return out; },
   getTierCounts: () => BABE_POOL.reduce((m, b) => (m[b.rarity] = (m[b.rarity] || 0) + 1, m), {}),
   getCardAspect: () => CARD_ASPECT,
   getCardImgs: () => cardImgs,
