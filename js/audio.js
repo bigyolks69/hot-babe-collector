@@ -21,8 +21,7 @@ function createAudioGraph() {
 
 /**
  * Kick actx.resume() but never hang forever — iOS can leave resume() pending
- * indefinitely when called outside a user gesture, which used to stick bgmStartLock
- * and silence music for the whole session.
+ * indefinitely when called outside a user gesture.
  */
 function resumeAudio(timeoutMs) {
   createAudioGraph();
@@ -39,21 +38,8 @@ function resumeAudio(timeoutMs) {
  * Ensure playback AudioContext exists and kick resume (timed).
  * Preload must NOT await this — see fetchDecode (uses OfflineAudioContext).
  */
-let _bgmNudgeQueued = false;
 function ensureAudio() {
   createAudioGraph();
-  // Global nudge: any input/SFX path retries silent BGM once HTML/URL is ready
-  if (bgm && bgm.wanted && bgm.ready && !bgmStartLock && !_bgmNudgeQueued) {
-    try {
-      if (!bgmActuallyPlaying()) {
-        _bgmNudgeQueued = true;
-        Promise.resolve().then(() => {
-          _bgmNudgeQueued = false;
-          if (bgm.wanted && bgm.ready && !bgmActuallyPlaying()) startBgm();
-        });
-      }
-    } catch (_) {}
-  }
   if (actx.state === "suspended" || actx.state === "interrupted") {
     return resumeAudio(800);
   }
@@ -66,7 +52,7 @@ function setMuted(v) {
   if (masterGain) masterGain.gain.value = muted ? 0 : 1;
   if (cryHtmlAudio) cryHtmlAudio.muted = muted;
   if (cryLoopHtmlAudio) cryLoopHtmlAudio.muted = muted;
-  if (bgm.html) bgm.html.muted = muted;
+  if (bgm.el) bgm.el.muted = muted;
   const btn = document.getElementById("muteBtn");
   if (btn) {
     btn.textContent = muted ? "🔇" : "🔊";
@@ -241,121 +227,73 @@ function playDeathCry() {
 }
 
 // ---------- Background music ----------
-// PURE HTMLAudioElement.loop — no WebAudio for BGM (decode races / suspended ctx
-// caused permanent silence across bgmfix1–3). Starts on first key/tap / Start;
-// deaths, slots, level changes, gallery leave it alone. Mute via element.muted.
+// One HTMLAudioElement.loop. Preload on load; .play() after gesture (Start/first tap).
+// No visibility/blur/focus pause-resume — OS/browser handles backgrounding.
 const BGM_VOLUME = 0.35;
 const BGM_DUCK = 0.4;
 const bgm = {
-  url: null, buf: null, html: null, src: null, gain: null,
-  wanted: false, ready: false, unlocked: false,
-  starts: 0, t0: 0, offset: 0, loopStart: 0, loopEnd: 0, failed: false, mode: null,
-  htmlPlayPending: false, lastError: null,
+  el: null,
+  url: null,
+  wanted: false,
+  ready: false,
+  unlocked: false,
+  starts: 0,
 };
-function bgmActuallyPlaying() {
-  if (bgm.htmlPlayPending) return true;
-  if (bgm.html && !bgm.html.paused && !bgm.html.ended) return true;
-  return false;
-}
-function clearBgmPlayback() {
-  if (bgm.html) {
-    try { bgm.html.pause(); } catch (_) {}
-  }
-  bgm.htmlPlayPending = false;
-  bgm.src = null;
-}
-function ensureBgmHtml() {
-  if (bgm.html) return bgm.html;
-  if (!bgm.url) return null;
-  const h = new Audio();
-  h.preload = "auto";
-  h.loop = true;
-  h.volume = BGM_VOLUME;
-  h.muted = muted;
-  h.src = bgm.url; // set after props; triggers load
-  try { h.load(); } catch (_) {}
-  bgm.html = h;
-  return h;
-}
-function startBgmHtml() {
-  const h = ensureBgmHtml();
-  if (!h) return false;
-  h.muted = muted;
-  h.volume = BGM_VOLUME * (cryAudio.playing ? BGM_DUCK : 1);
-  if (!h.loop) h.loop = true;
+
+function tryPlayBgm() {
+  if (!bgm.wanted || !bgm.el) return;
+  const el = bgm.el;
+  el.muted = muted;
+  el.volume = BGM_VOLUME * (cryAudio.playing ? BGM_DUCK : 1);
+  if (!el.loop) el.loop = true;
+  if (!el.paused && !el.ended) return;
   try {
-    if (h.paused || h.ended) {
-      const pr = h.play();
-      if (pr && pr.then) {
-        bgm.htmlPlayPending = true;
-        pr.then(() => {
-          bgm.htmlPlayPending = false;
-          bgm.lastError = null;
-          bgm.starts++;
-          bgm.mode = "html";
-          console.log("[HBC] BGM playing", bgm.url, "vol", h.volume, "muted", h.muted);
-        }).catch((err) => {
-          bgm.htmlPlayPending = false;
-          bgm.lastError = (err && err.message) || String(err);
-          console.warn("[HBC] BGM HTML play blocked", bgm.lastError, bgm.url);
-        });
-      } else {
+    const pr = el.play();
+    if (pr && pr.then) {
+      pr.then(() => {
         bgm.starts++;
-        bgm.mode = "html";
-      }
+        console.log("[HBC] BGM playing", bgm.url);
+      }).catch((err) => {
+        console.warn("[HBC] BGM play blocked", err && err.message);
+      });
+    } else {
+      bgm.starts++;
     }
-    return true;
   } catch (e) {
-    bgm.htmlPlayPending = false;
-    bgm.lastError = e && e.message;
-    return false;
+    console.warn("[HBC] BGM play failed", e && e.message);
   }
 }
 
-function onBgmReady() {
-  bgm.ready = true;
-  if (bgm.wanted) startBgm();
-}
-
-/** Sync arm HTML — never waits on WebAudio decode. */
+/** Preload BGM; play later when wanted + (preferably) ready. */
 function loadBgm() {
-  // Always MP3 for max Safari/Chrome/mobile reach (ogg twin kept on disk as backup)
   bgm.url = audioAssetUrl("audio/bgm_main.mp3");
-  ensureBgmHtml();
-  bgm.mode = "html";
-  onBgmReady();
-  console.log("[HBC] BGM armed", bgm.url);
+  const el = new Audio();
+  el.preload = "auto";
+  el.loop = true;
+  el.volume = BGM_VOLUME;
+  el.muted = muted;
+  el.src = bgm.url;
+  try { el.load(); } catch (_) {}
+  const markReady = () => {
+    if (bgm.ready) return;
+    bgm.ready = true;
+    tryPlayBgm();
+  };
+  el.addEventListener("canplaythrough", markReady);
+  el.addEventListener("loadeddata", markReady);
+  if (el.readyState >= 2) markReady();
+  bgm.el = el;
+  console.log("[HBC] BGM preload", bgm.url);
 }
 
-let bgmStartLock = null;
-let bgmStartLockAt = 0;
-
-/** Queue/start BGM via HTMLAudioElement only. */
+/** Mark music wanted and attempt .play() (Start / unlock). */
 function startBgm() {
   bgm.wanted = true;
-  if (!bgm.url) {
-    bgm.url = audioAssetUrl("audio/bgm_main.mp3");
-  }
-  if (!bgm.ready) {
-    ensureBgmHtml();
-    bgm.ready = true;
-  }
-  if (bgmActuallyPlaying()) return null;
-  // Break stale lock quickly
-  if (bgmStartLock && performance.now() - bgmStartLockAt > 800) bgmStartLock = null;
-  if (bgmStartLock) return bgmStartLock;
-  bgmStartLockAt = performance.now();
-  // Sync .play() — must stay inside user-gesture turns (unlock / Start)
-  startBgmHtml();
-  bgmStartLock = Promise.resolve().then(() => {
-    if (!bgmActuallyPlaying()) startBgmHtml();
-  }).finally(() => { bgmStartLock = null; });
-  return bgmStartLock;
+  bgm.unlocked = true;
+  tryPlayBgm();
 }
 
-/**
- * GLOBAL unlock — every key/tap. Sync HTML .play() in the gesture turn.
- */
+/** First key/tap unlocks autoplay + resumes WebAudio for SFX/cry. */
 function unlockAudio() {
   bgm.wanted = true;
   bgm.unlocked = true;
@@ -363,57 +301,16 @@ function unlockAudio() {
   if (actx && (actx.state === "suspended" || actx.state === "interrupted")) {
     try { actx.resume(); } catch (_) {}
   }
-  if (bgmStartLock && performance.now() - bgmStartLockAt > 400) bgmStartLock = null;
-  if (!bgm.url) bgm.url = audioAssetUrl("audio/bgm_main.mp3");
-  ensureBgmHtml();
-  bgm.ready = true;
-  startBgmHtml(); // PRIMARY: gesture-sync play
+  tryPlayBgm();
 }
 ["keydown", "pointerdown", "touchstart", "touchend", "mousedown"].forEach(ev =>
   window.addEventListener(ev, unlockAudio, { capture: true, passive: true }));
-/** Pause HTML BGM when tab/app hides; do not clear bgm.wanted. */
-function pauseBgmForHide() {
-  if (bgm.html) {
-    try { bgm.html.pause(); } catch (_) {}
-  }
-  bgm.htmlPlayPending = false;
-}
 
-/** Resume only if music was already wanted (unlocked / started before hide). */
-function resumeBgmIfWanted() {
-  if (!bgm.wanted) return;
-  createAudioGraph();
-  if (actx && (actx.state === "suspended" || actx.state === "interrupted")) {
-    try { actx.resume(); } catch (_) {}
-  }
-  if (!bgmActuallyPlaying()) startBgm();
-}
-
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) pauseBgmForHide();
-  else resumeBgmIfWanted();
-});
-// pagehide/pageshow: iOS Safari / bfcache / some app switches
-window.addEventListener("pagehide", pauseBgmForHide);
-document.addEventListener("pageshow", resumeBgmIfWanted);
-// blur/focus: extra mobile coverage when visibilitychange is slow/missing
-window.addEventListener("blur", pauseBgmForHide);
-window.addEventListener("focus", resumeBgmIfWanted);
 function duckBgm(on) {
-  if (bgm.gain && actx) {
-    const g = bgm.gain.gain, t = actx.currentTime;
-    g.cancelScheduledValues(t);
-    g.setValueAtTime(g.value, t);
-    g.linearRampToValueAtTime(BGM_VOLUME * (on ? BGM_DUCK : 1), t + (on ? 0.15 : 0.6));
-  } else if (bgm.html) bgm.html.volume = BGM_VOLUME * (on ? BGM_DUCK : 1);
+  if (bgm.el) bgm.el.volume = BGM_VOLUME * (on ? BGM_DUCK : 1);
 }
 function bgmPosition() {
-  if (bgm.src && actx) {
-    const len = bgm.loopEnd - bgm.loopStart;
-    const el = actx.currentTime - bgm.t0 + (bgm.offset - bgm.loopStart);
-    return bgm.loopStart + (el % len);
-  }
-  return bgm.html ? bgm.html.currentTime : 0;
+  return bgm.el ? bgm.el.currentTime : 0;
 }
 
 function maybeStartCryLoop() {

@@ -28,6 +28,8 @@ No build step. Classic `<script>` tags (not ES modules) so offline `file://` kee
 Script load order (do not reorder): boot → audio → babes → input → cards → level → game → boss → update → ui → main.
 
 ## Recent changes
+- **BGM clean rewrite (bgmclean1):** delete pause-on-hide / dual-path / lock spaghetti. One `HTMLAudioElement` (`loop`, `audio/bgm_main.mp3`), preload on load, `.play()` after Start/first tap. OS/browser owns backgrounding — no visibility/blur/focus/pagehide BGM handlers. Mute + simple death-cry duck kept; SFX/cry untouched. Cache `?v=bgmclean1`.
+
 - **BGM pause when hidden (bgmpause1):** pause `HTMLAudioElement` BGM on `document.hidden` (`visibilitychange`), plus `pagehide` / `blur` for mobile app switches; resume via `.play()` only if `bgm.wanted` (never auto-start if never unlocked). Cache `?v=bgmpause1`.
 
 - **Double Jump (all-30):** while every unique babe is owned (same live check as the SS aura — `ownedUniqueCount >= BABE_POOL.length`), Jump grants one extra mid-air hop; `airJumpsUsed` resets on land and turns off if a unique is lost. Congrats popup: "You attained Double Jump!" Cache `?v=dbljump1`.

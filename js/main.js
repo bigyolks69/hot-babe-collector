@@ -115,22 +115,18 @@ window.__HBC = {
   forceBossDefeat: () => { if (!boss) return false; const d = boss.dual ? boss.demons.find(x=>!x.defeated) : boss; if (!d) return false; d.hp = 1; d.phase = d.maxHp - 1; beginBossVulnerable(d); hitBossDemon(d); return true; },
   getEnemySprites: () => Object.fromEntries(ENEMY_SPRITES.map(n => [n, imgOk(ENEMY_IMG[n])])),
   getEnemyFrames: () => enemies.map(e => ({ type: e.type, alive: e.alive, dir: e.dir, frame: e.type === "flyer" ? null : (e.alive ? enemyFrame(e) : (e.squishT != null && e.squishT < ENEMY_SQUISH_SHOW ? e.type + "-squished" : null)) })),
-  getBgm: () => ({ mode: bgm.mode, url: bgm.url, wanted: bgm.wanted, ready: bgm.ready, unlocked: bgm.unlocked, starts: bgm.starts,
-    playing: !!(bgm.html && !bgm.html.paused && !bgm.html.ended), pending: !!bgm.htmlPlayPending,
-    loop: bgm.html ? bgm.html.loop : null, htmlMuted: bgm.html ? bgm.html.muted : null, htmlVol: bgm.html ? bgm.html.volume : null,
-    lastError: bgm.lastError || null, pos: bgmPosition(), ctx: actx && actx.state,
-    master: masterGain ? masterGain.gain.value : null, muted }),
-  // measure output level after masterGain (what the speakers get) and of the music bus alone
+  getBgm: () => ({ url: bgm.url, wanted: bgm.wanted, ready: bgm.ready, unlocked: bgm.unlocked, starts: bgm.starts,
+    playing: !!(bgm.el && !bgm.el.paused && !bgm.el.ended),
+    loop: bgm.el ? bgm.el.loop : null, muted: bgm.el ? bgm.el.muted : null, vol: bgm.el ? bgm.el.volume : null,
+    pos: bgmPosition(), ctx: actx && actx.state, master: masterGain ? masterGain.gain.value : null, appMuted: muted }),
   audioLevels: () => {
-    if (!actx) return null;
+    if (!actx || !masterGain) return null;
     const mk = (node) => { const a = actx.createAnalyser(); a.fftSize = 2048; node.connect(a); return a; };
-    if (!window.__hbcAn) window.__hbcAn = { out: mk(masterGain), music: bgm.gain ? mk(bgm.gain) : null };
-    if (!window.__hbcAn.music && bgm.gain) window.__hbcAn.music = mk(bgm.gain);
+    if (!window.__hbcAn) window.__hbcAn = { out: mk(masterGain) };
     const rms = (a) => { if (!a) return null; const d = new Float32Array(a.fftSize); a.getFloatTimeDomainData(d); let s = 0; for (const v of d) s += v * v; return Math.sqrt(s / d.length); };
-    return { out: rms(window.__hbcAn.out), music: rms(window.__hbcAn.music) };
+    return { out: rms(window.__hbcAn.out), music: null };
   },
-  // test-only: jump the playhead close to the loop end to watch the wrap (does not count as a start)
-  bgmJumpNearEnd: (sec) => { if (!bgm.src) return false; const old = bgm.src; const src = actx.createBufferSource(); src.buffer = bgm.buf; src.loop = true; src.loopStart = bgm.loopStart; src.loopEnd = bgm.loopEnd; src.connect(bgm.gain); bgm.offset = bgm.loopEnd - (sec || 1); bgm.t0 = actx.currentTime; src.start(0, bgm.offset); bgm.src = src; old.stop(); old.disconnect(); return true; },
+  bgmJumpNearEnd: (sec) => { if (!bgm.el) return false; try { const d = bgm.el.duration; if (!isFinite(d) || d <= 0) return false; bgm.el.currentTime = Math.max(0, d - (sec || 1)); return true; } catch (_) { return false; } },
   teleport: (x, y) => { player.x = x; player.y = y; player.vx = 0; player.vy = 0; player.prevX = x; player.prevY = y; player.onGround = true; player.coyote = 0.1; player.stun = 0; cameraX = Math.max(0, Math.min(x - W * 0.38, LEVEL_W * TILE - W)); },
   renderOverview: (n) => renderLevelOverview(n),
   getMaxCopies: () => MAX_COPIES,
