@@ -151,11 +151,20 @@ function dismissCongrats(force) {
   // Rolls earned meanwhile resume now
   if (!slot && slotQueue > 0) { slotQueue--; if (!beginSlotRoll()) slotQueue = 0; }
 }
-// Collection reset: gallery "Reset collection" button → confirm popup (no P key).
+// Collection reset: gallery "Reset collection" button → confirm popup (P opens gallery only, never resets).
 // Wipes babe counts + tray order + complete flag; keeps level progress and mute.
 let resetConfirm = null; // { t } while the confirm popup is up
 let resetToast = null;   // { t, dur } brief "Collection reset" after confirming
-const RESET_CONFIRM_GUARD = 0.25; // second P ignored this long (key-repeat / double-fire)
+const RESET_CONFIRM_GUARD = 0.25; // confirm ignored this long (key-repeat / double-fire)
+function hardRefreshCache() {
+  // Force full page + asset re-fetch (bypass HTTP cache) without wiping localStorage.
+  try {
+    const base = location.pathname || "/";
+    location.href = base + "?_=" + Date.now() + (location.hash || "");
+  } catch (e) {
+    location.reload();
+  }
+}
 function canOpenResetConfirm() {
   return !resetConfirm && state === "collection";
 }

@@ -350,7 +350,7 @@ function drawHUD() {
   const unique = ownedUniqueCount(collection);
   const total = totalPulls(collection);
   // Box grows leftward to fit the hint; right edge stays at W - 12
-  const pullsLine = "Total pulls: " + total + (isTouch ? "  [Collection]" : "  [press C = Collection]");
+  const pullsLine = "Total pulls: " + total + (isTouch ? "  [Menu]" : "  [press C = Collection]");
   ctx.font = "11px sans-serif";
   const boxW = Math.max(158, Math.ceil(ctx.measureText(pullsLine).width) + 24);
   const boxX = W - 12 - boxW;
@@ -491,8 +491,13 @@ function galleryFilteredList() {
 }
 
 function galleryResetBtn() {
-  // Top-right of the gallery — only reset entry point (P key removed)
+  // Top-right of the gallery — reset entry point (P opens gallery; does not reset)
   return { x: W - 168, y: 12, w: 150, h: 36 };
+}
+function galleryRefreshCacheBtn() {
+  // Directly under Reset collection — same panel for mobile + desktop
+  const rb = galleryResetBtn();
+  return { x: rb.x, y: rb.y + rb.h + 8, w: rb.w, h: rb.h };
 }
 function handleGalleryClick(sx, sy) {
   // Reset-confirm popup buttons (mobile) take priority over the gallery underneath
@@ -503,10 +508,15 @@ function handleGalleryClick(sx, sy) {
     else if (hit(L.cancelBtn)) cancelResetConfirm();
     return;
   }
-  // Gallery "Reset" button
+  // Gallery "Reset" / "Refresh Cache" buttons
   const rb = galleryResetBtn();
   if (sx >= rb.x && sx <= rb.x + rb.w && sy >= rb.y && sy <= rb.y + rb.h) {
     openResetConfirm();
+    return;
+  }
+  const rcb = galleryRefreshCacheBtn();
+  if (sx >= rcb.x && sx <= rcb.x + rcb.w && sy >= rcb.y && sy <= rcb.y + rcb.h) {
+    hardRefreshCache();
     return;
   }
   // Filter tabs
@@ -590,7 +600,7 @@ function drawCollection() {
   ctx.font = "bold 26px sans-serif";
   ctx.textAlign = "center";
   ctx.fillText("Babe Gallery", W / 2, 34);
-  // Reset button (always visible — mobile has no P key; desktop can use it too)
+  // Reset + Refresh Cache (same gallery panel for mobile Menu + desktop C/P)
   {
     const rb = galleryResetBtn();
     ctx.fillStyle = "rgba(224,69,127,0.55)";
@@ -600,6 +610,13 @@ function drawCollection() {
     ctx.fillStyle = "#fff"; ctx.font = "bold 14px sans-serif";
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText("Reset collection", rb.x + rb.w / 2, rb.y + rb.h / 2 + 1);
+    const rcb = galleryRefreshCacheBtn();
+    ctx.fillStyle = "rgba(80,120,200,0.55)";
+    roundRect(rcb.x, rcb.y, rcb.w, rcb.h, 10); ctx.fill();
+    ctx.strokeStyle = "#a8d4ff"; ctx.lineWidth = 1.5;
+    roundRect(rcb.x, rcb.y, rcb.w, rcb.h, 10); ctx.stroke();
+    ctx.fillStyle = "#fff"; ctx.font = "bold 14px sans-serif";
+    ctx.fillText("Refresh Cache", rcb.x + rcb.w / 2, rcb.y + rcb.h / 2 + 1);
     ctx.textBaseline = "alphabetic"; ctx.textAlign = "center";
   }
   ctx.font = "bold 14px sans-serif";
@@ -762,7 +779,7 @@ function drawTitle() {
   ctx.fillStyle = "#999";
   ctx.font = "12px sans-serif";
   ctx.fillText(isTouch
-    ? "On-screen ← → Jump  •  Collection"
+    ? "On-screen ← → Jump  •  Menu"
     : "←→ / A D move  •  Space / W / ↑ jump  •  C babe gallery", W/2, 420);
   if (isTouch) {
     ctx.fillStyle = "#c8a0b8";
@@ -1050,7 +1067,7 @@ function drawWin() {
   else ctx.fillText(isTouch ? "Tap to continue to Level " + (levelNum + 1) : "Press Enter to continue to Level " + (levelNum + 1) + "  ·  R to replay", W / 2, H - 48);
   ctx.fillStyle = "#aaa";
   ctx.font = "13px sans-serif";
-  ctx.fillText(isTouch ? "Open Collection to view your babes" : "Press C to view full babe gallery", W / 2, H - 26);
+  ctx.fillText(isTouch ? "Open Menu to view your babes" : "Press C to view full babe gallery", W / 2, H - 26);
 }
 
 function frame(dt) {
@@ -1204,7 +1221,7 @@ function frameInner(dt) {
     drawHUD();
     if (slot) drawSlot();
     drawCollection();
-    if (justPressed["c"] || (justPressed["escape"] && !gallery.selected)) {
+    if (justPressed["c"] || justPressed["p"] || (justPressed["escape"] && !gallery.selected)) {
       gallery.selected = null;
       state = collectionReturn; // back to play, or to the win panel it was opened from
     }
@@ -1221,7 +1238,7 @@ function frameInner(dt) {
     drawWin();
     if (justPressed["enter"] || justPressed[" "]) winContinue();
     else if (justPressed["r"]) startLevel(winStats && winStats.final ? 1 : levelNum); // replay
-    if (justPressed["c"]) openCollection();
+    if (justPressed["c"] || justPressed["p"]) openCollection();
     return;
   }
 
@@ -1231,7 +1248,7 @@ function frameInner(dt) {
   if (slot) updateSlot(dt);
   if (state === "play") {
     updatePlay(dt);
-    if (justPressed["c"] && state === "play") openCollection();
+    if ((justPressed["c"] || justPressed["p"]) && state === "play") openCollection();
   } else if (state === "dying") {
     updateDying(dt);
   } else if (state === "dead") {
