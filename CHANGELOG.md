@@ -28,6 +28,7 @@ No build step. Classic `<script>` tags (not ES modules) so offline `file://` kee
 Script load order (do not reorder): boot → audio → babes → input → cards → level → game → boss → update → ui → main.
 
 ## Recent changes
+- **Aura PNG cache-bust:** `?v=aura3` on aura frames + boot.js so the yellow-interior-fill refresh shows after hard-refresh (no new art).
 
 - **L5 mini-boss camera:** vertical follow may go above y=0 and frames the demon body + jump arc under the HUD (boss was at y≈−99, mostly off-screen).
 - **L6 left demon spacing:** left spawn inset `56` → `BOSS_EDGE_PAD` (220), matching right-side breathing room for crank jumps.
