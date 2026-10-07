@@ -99,8 +99,9 @@ function buildLevel(def, diff) {
     const hoverY = floorTop - PH - FLY_HEAD_CLEAR - FLY_SWOOP - FLY_BOB - FLY_H;
     return { type: "flyer", x: x + o, a: A, b: B, vx, tier: 1, hoverY, floorTop };
   });
-  // Checkpoints: start spawn + one near each CP_FRACTIONS point, searched outward for safe ground:
-  // solid ground under [x-2, x+3], nothing low overhead, no enemy patrol within CP_ENEMY_CLEAR tiles
+  // Checkpoints:
+  //  - Horizontal stages: start only + auto mid CPs at CP_FRACTIONS (ignore per-section breathers)
+  //  - Boss / vertical: keep intentional section cps (with y)
   cps.sort((a, b) => a.x - b.x);
   const startX = cps.length ? cps[0].x : 2;
   const startY = cps.length ? cps[0].yTile : GROUND_Y;
@@ -109,26 +110,29 @@ function buildLevel(def, diff) {
     !plats.some(p => p.y < GROUND_Y && p.y >= GROUND_Y - 4 && p.x < x + 3 && p.x + p.w > x - 1) &&
     !chosen.concat(flyers).some(e => x >= e.a - CP_ENEMY_CLEAR && x <= e.b + CP_ENEMY_CLEAR) &&
     !keptPicks.some(([px]) => Math.abs(px - x) < 2);
-  // Prefer explicit section checkpoints (with y); auto-fill mids on horizontal stages
-  let keptCps = cps.map(c => ({ x: c.x, yTile: c.yTile != null ? c.yTile : GROUND_Y }));
-  if (!keptCps.length) keptCps = [{ x: startX, yTile: startY }];
-  if (def.boss && !def.bossLockImmediate && keptCps.length < 2) {
-    let mid = cps.find(c => c.x > startX + 8);
-    let midX = mid ? mid.x : Math.round(width * 0.4);
-    const floorY = def.bossFloorY != null ? def.bossFloorY : GROUND_Y;
-    for (let d = 0; d < 40; d++) {
-      const tryX = [midX + d, midX - d].find(x => x > startX + 4 &&
-        plats.some(p => p.y === floorY && p.x <= x && p.x + p.w >= x + 2));
-      if (tryX != null) { keptCps.push({ x: tryX, yTile: floorY }); break; }
-    }
-  } else if (!def.boss && !def.vertical && keptCps.length < 3) {
+  let keptCps;
+  if (!def.boss && !def.vertical) {
+    keptCps = [{ x: startX, yTile: startY }];
     for (const f of CP_FRACTIONS) {
       const target = Math.round(startX + (endX - startX) * f);
       for (let d = 0; d < 80; d++) {
-        const x = [target + d, target - d].find(safeCp);
+        const x = [target + d, target - d].find(xx => xx > startX + 4 && safeCp(xx));
         if (x != null && !keptCps.some(c => Math.abs(c.x - x) < 6)) {
           keptCps.push({ x, yTile: GROUND_Y }); break;
         }
+      }
+    }
+  } else {
+    keptCps = cps.map(c => ({ x: c.x, yTile: c.yTile != null ? c.yTile : GROUND_Y }));
+    if (!keptCps.length) keptCps = [{ x: startX, yTile: startY }];
+    if (def.boss && !def.bossLockImmediate && keptCps.length < 2) {
+      let mid = cps.find(c => c.x > startX + 8);
+      let midX = mid ? mid.x : Math.round(width * 0.4);
+      const floorY = def.bossFloorY != null ? def.bossFloorY : GROUND_Y;
+      for (let d = 0; d < 40; d++) {
+        const tryX = [midX + d, midX - d].find(x => x > startX + 4 &&
+          plats.some(p => p.y === floorY && p.x <= x && p.x + p.w >= x + 2));
+        if (tryX != null) { keptCps.push({ x: tryX, yTile: floorY }); break; }
       }
     }
   }
