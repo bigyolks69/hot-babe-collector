@@ -29,6 +29,7 @@ Script load order (do not reorder): boot → audio → babes → input → cards
 
 ## Recent changes
 
+- **Buff toast timing:** fully visible **3.5s** (plus 0.2s in / 0.35s out).
 - **Buff toast percents:** shows total stack bonus, e.g. `(14% faster, 10% higher jump)` at 2 stacks.
 - **Cache-bust:** `index.html` script/css URLs use `?v=` so browsers pick up toast (not old Continue popup).
 - **Collection buff:** every **5 unique** babes (5/10/15/20/25/30) stacks +**7%** move / +**5%** jump height (soft cap 6 → 1.42× / 1.30×). Live unique count. Threshold notice is a **non-blocking top toast** (~2.4s fade), not a pause overlay.
