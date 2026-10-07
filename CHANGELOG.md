@@ -28,6 +28,7 @@ No build step. Classic `<script>` tags (not ES modules) so offline `file://` kee
 Script load order (do not reorder): boot → audio → babes → input → cards → level → game → boss → update → ui → main.
 
 ## Recent changes
+- **SS aura solid fill:** solid yellow interior (no punch); closes gap above hair (`?v=aura5`).
 - **Mobile Menu + Refresh Cache:** touch `#tColl` label is **Menu** (desktop keeps Collection / C). Gallery panel adds **Refresh Cache** under Reset (hard reload via `?_=` timestamp). Desktop **P** opens the same gallery (not a collection reset).
 - **Aura PNG cache-bust:** `?v=aura3` on aura frames + boot.js so the yellow-interior-fill refresh shows after hard-refresh (no new art).
 
