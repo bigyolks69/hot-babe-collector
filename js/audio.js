@@ -371,18 +371,34 @@ function unlockAudio() {
 }
 ["keydown", "pointerdown", "touchstart", "touchend", "mousedown"].forEach(ev =>
   window.addEventListener(ev, unlockAudio, { capture: true, passive: true }));
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden || !bgm.wanted) return;
+/** Pause HTML BGM when tab/app hides; do not clear bgm.wanted. */
+function pauseBgmForHide() {
+  if (bgm.html) {
+    try { bgm.html.pause(); } catch (_) {}
+  }
+  bgm.htmlPlayPending = false;
+}
+
+/** Resume only if music was already wanted (unlocked / started before hide). */
+function resumeBgmIfWanted() {
+  if (!bgm.wanted) return;
   createAudioGraph();
   if (actx && (actx.state === "suspended" || actx.state === "interrupted")) {
     try { actx.resume(); } catch (_) {}
   }
   if (!bgmActuallyPlaying()) startBgm();
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) pauseBgmForHide();
+  else resumeBgmIfWanted();
 });
-document.addEventListener("pageshow", () => {
-  if (!bgm.wanted) return;
-  if (!bgmActuallyPlaying()) startBgm();
-});
+// pagehide/pageshow: iOS Safari / bfcache / some app switches
+window.addEventListener("pagehide", pauseBgmForHide);
+document.addEventListener("pageshow", resumeBgmIfWanted);
+// blur/focus: extra mobile coverage when visibilitychange is slow/missing
+window.addEventListener("blur", pauseBgmForHide);
+window.addEventListener("focus", resumeBgmIfWanted);
 function duckBgm(on) {
   if (bgm.gain && actx) {
     const g = bgm.gain.gain, t = actx.currentTime;
