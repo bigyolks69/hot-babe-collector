@@ -42,7 +42,7 @@ function resumeAudio(timeoutMs) {
 let _bgmNudgeQueued = false;
 function ensureAudio() {
   createAudioGraph();
-  // Global nudge: retry silent BGM only once decode/html is ready (never hang pre-buffer)
+  // Global nudge: any input/SFX path retries silent BGM once HTML/URL is ready
   if (bgm && bgm.wanted && bgm.ready && !bgmStartLock && !_bgmNudgeQueued) {
     try {
       if (!bgmActuallyPlaying()) {
@@ -225,18 +225,20 @@ function playDeathCry() {
 }
 
 // ---------- Background music ----------
-// One looping track for the whole session: starts on the first key/tap (audio unlock) and is never
-// restarted — deaths, slot rolls, level changes and the gallery leave it alone. Routed through
-// masterGain so the mute toggle silences it; ducked briefly under the death cry.
+// PRIMARY path: HTMLAudioElement loop — reliable under mobile/desktop autoplay.
+// WebAudio buffer decode is optional (seamless loop points) and must NEVER block
+// readiness or steal a working HTML play. Music starts on first key/tap / Start
+// and is never restarted for deaths, slots, level changes, or gallery.
 const BGM_VOLUME = 0.35;   // relative to master (SFX beeps / cry sit above it)
 const BGM_DUCK = 0.4;      // music multiplier while the death cry plays
 const bgm = {
   url: null, buf: null, html: null, src: null, gain: null,
   wanted: false,     // user gestured / Start — queue play until ready
-  ready: false,      // decode finished (WebAudio buf) or HTML fallback armed
+  ready: false,      // HTML armed (and optionally WebAudio buf decoded)
   unlocked: false,   // first gesture resumed/created playback context
   starts: 0,         // times the loop was (re)started — should stay 1 per page load
   t0: 0, offset: 0, loopStart: 0, loopEnd: 0, failed: false, mode: null,
+  htmlPlayPending: false, // play() promise in flight
 };
 // Trim codec padding / dead air at both ends so the wrap has no audible gap
 function bgmLoopPoints(buf) {
@@ -256,21 +258,26 @@ function bgmLoopPoints(buf) {
   return { start: a / buf.sampleRate, end: b / buf.sampleRate };
 }
 function bgmActuallyPlaying() {
+  if (bgm.htmlPlayPending) return true;
   if (bgm.html && !bgm.html.paused && !bgm.html.ended) return true;
-  if (!actx || actx.state !== "running") return false;
-  if (bgm.src) return true;
+  // WebAudio only counts while ctx is running (suspended + src = silent trap)
+  if (bgm.src && actx && actx.state === "running") return true;
   return false;
 }
-function clearBgmPlayback() {
+function clearBgmWebAudio() {
   if (bgm.src) {
     try { bgm.src.onended = null; } catch (_) {}
     try { bgm.src.stop(0); } catch (_) {}
     try { bgm.src.disconnect(); } catch (_) {}
     bgm.src = null;
   }
+}
+function clearBgmPlayback() {
+  clearBgmWebAudio();
   if (bgm.html) {
     try { bgm.html.pause(); } catch (_) {}
   }
+  bgm.htmlPlayPending = false;
 }
 function ensureBgmHtml() {
   if (bgm.html) return bgm.html;
@@ -280,6 +287,8 @@ function ensureBgmHtml() {
   h.preload = "auto";
   h.volume = BGM_VOLUME;
   h.muted = muted;
+  // Helps some mobile browsers treat it as a media element early
+  try { h.load(); } catch (_) {}
   bgm.html = h;
   return h;
 }
@@ -292,19 +301,29 @@ function startBgmHtml() {
     if (h.paused || h.ended) {
       const pr = h.play();
       if (pr && pr.then) {
-        pr.then(() => { bgm.starts++; if (bgm.mode !== "webaudio") bgm.mode = "html"; }).catch(() => {});
+        bgm.htmlPlayPending = true;
+        pr.then(() => {
+          bgm.htmlPlayPending = false;
+          bgm.starts++;
+          bgm.mode = "html";
+          // Prefer HTML — stop any silent/stale WebAudio twin
+          clearBgmWebAudio();
+        }).catch((err) => {
+          bgm.htmlPlayPending = false;
+          console.warn("[HBC] BGM HTML play blocked", err && err.message);
+        });
       } else {
         bgm.starts++;
-        if (bgm.mode !== "webaudio") bgm.mode = "html";
+        bgm.mode = "html";
+        clearBgmWebAudio();
       }
     }
     return true;
-  } catch (_) { return false; }
+  } catch (_) { bgm.htmlPlayPending = false; return false; }
 }
 
 /**
- * Mark decode/html ready. If the user already Start/unlocked, begin playback now.
- * This is the only place that "fires late" after a slow load.
+ * Mark HTML ready. If the user already Start/unlocked, begin playback now.
  */
 function onBgmDecodeComplete() {
   bgm.ready = true;
@@ -313,43 +332,52 @@ function onBgmDecodeComplete() {
 
 async function loadBgm() {
   bgm.url = pickAudioUrl("audio/bgm_main");
-  bgm.ready = false;
+  // Arm HTML FIRST so ready=true before the ~3MB WebAudio decode finishes.
+  // bgmfix3 waited on decode → first Start often queued forever / missed gesture.
+  ensureBgmHtml();
+  bgm.mode = "html";
+  onBgmDecodeComplete();
+  // Optional: decode for WebAudio seamless loop (never gates HTML readiness)
   try {
     bgm.buf = await fetchDecode(bgm.url);
     const lp = bgmLoopPoints(bgm.buf);
     bgm.loopStart = lp.start; bgm.loopEnd = lp.end;
-    bgm.mode = "webaudio";
   } catch (e) {
-    console.warn("[HBC] music decode failed, using HTMLAudio loop", e && e.message);
-    ensureBgmHtml();
-    bgm.mode = "html";
+    console.warn("[HBC] music decode failed (HTML loop still active)", e && e.message);
+    bgm.buf = null;
   }
-  onBgmDecodeComplete();
 }
 
 let bgmStartLock = null;
 let bgmStartLockAt = 0;
 
 /**
- * Queue or start BGM.
+ * Queue or start BGM — HTMLAudioElement is primary.
  * - Always sets wanted=true (Start / unlock / startLevel).
- * - If decode not ready yet: return immediately (no lock, no resume await) — loadBgm will start.
- * - If ready: start WebAudio (or HTML fallback) once.
+ * - Sync HTML .play() first (gesture-safe when called from unlock/Start).
+ * - WebAudio only if HTML is not audibly playing and ctx is running.
  */
 async function startBgm() {
   bgm.wanted = true;
-  if (!bgm.ready) return null; // queued — wait for onBgmDecodeComplete
+  if (!bgm.url) return null;
+  if (!bgm.ready) {
+    ensureBgmHtml();
+    bgm.ready = true;
+  }
   if (bgmActuallyPlaying()) return null;
   if (bgmStartLock && performance.now() - bgmStartLockAt > 1000) bgmStartLock = null;
   if (bgmStartLock) return bgmStartLock;
   bgmStartLockAt = performance.now();
+  // Sync HTML kick BEFORE any await (iOS / Chrome autoplay requires gesture turn)
+  startBgmHtml();
   bgmStartLock = (async () => {
+    if (bgmActuallyPlaying()) return;
     await ensureAudio();
     if (bgmActuallyPlaying()) return;
-    if (!bgm.ready) return;
-    clearBgmPlayback();
+    // HTML blocked — try WebAudio if buffer + running ctx available
     try {
       if (bgm.buf && actx && actx.state === "running") {
+        clearBgmWebAudio();
         if (!bgm.gain) {
           bgm.gain = actx.createGain();
           bgm.gain.gain.value = BGM_VOLUME;
@@ -360,19 +388,17 @@ async function startBgm() {
         const src = actx.createBufferSource();
         src.buffer = bgm.buf;
         src.loop = true;
-        src.loopStart = bgm.loopStart;
-        src.loopEnd = bgm.loopEnd;
+        src.loopStart = bgm.loopStart || 0;
+        src.loopEnd = bgm.loopEnd || bgm.buf.duration;
         src.connect(bgm.gain);
         src.onended = () => { if (bgm.src === src) bgm.src = null; };
         bgm.t0 = actx.currentTime;
-        bgm.offset = bgm.loopStart;
+        bgm.offset = bgm.loopStart || 0;
         src.start(0, bgm.offset);
         bgm.src = src;
         bgm.starts++;
         bgm.mode = "webaudio";
-        if (bgm.html) { try { bgm.html.pause(); } catch (_) {} }
       } else {
-        // Ready but ctx still locked, or HTML-only mode
         startBgmHtml();
       }
     } catch (e) {
@@ -385,7 +411,7 @@ async function startBgm() {
 
 /**
  * GLOBAL unlock — first gesture / every tap-key.
- * Sets wanted + resumes context sync; starts only if decode already ready, else queues.
+ * Sync HTML .play() inside the gesture turn (primary reliable path).
  */
 function unlockAudio() {
   bgm.wanted = true;
@@ -395,8 +421,12 @@ function unlockAudio() {
     try { actx.resume(); } catch (_) {}
   }
   if (bgmStartLock && performance.now() - bgmStartLockAt > 400) bgmStartLock = null;
-  // Do not start (or HTML-play) before buffer/html is ready — avoids hang + silent races
-  if (bgm.ready) startBgm();
+  // Sync HTML play in the gesture — do not wait for WebAudio decode
+  if (bgm.url || bgm.html) startBgmHtml();
+  else if (!bgm.url) {
+    // Ultra-early gesture before loadBgm set url — still mark wanted
+  }
+  if (bgm.ready && !bgmActuallyPlaying()) startBgm();
 }
 ["keydown", "pointerdown", "touchstart", "touchend", "mousedown"].forEach(ev =>
   window.addEventListener(ev, unlockAudio, { capture: true, passive: true }));
