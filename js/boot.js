@@ -172,7 +172,9 @@ function drawAura() {
   ctx.imageSmoothingEnabled = false;
   ctx.translate(cx, by);
   if (player.facing < 0) ctx.scale(-1, 1);
-  ctx.drawImage(im, -Math.floor(AURA_W / 2), -AURA_H, AURA_W, AURA_H);
+  // Visual only: 30% shorter (scale Y to 70%); width unchanged, still feet-anchored
+  const drawH = Math.round(AURA_H * 0.7);
+  ctx.drawImage(im, -Math.floor(AURA_W / 2), -drawH, AURA_W, drawH);
   ctx.restore();
 }
 function drawPlayer() {

@@ -309,13 +309,14 @@ let coins = [];
 let enemies = [];
 let particles = [];
 
-// Sky heart drop: when HP < max, every 20–30s one heart floats down from above the camera.
+// Sky heart drop: when HP < max, every 10s one heart floats down from above the camera.
 const MAX_HEARTS = 3;
 let floatHeart = null; // { x, y, w, h, vy, bob } or null — at most one
 let heartDropTimer = 0; // seconds until next spawn attempt (only ticks in play while hearts < max)
+let heartPickups = []; // L4+ placed map hearts: { x, y, w, h, bob, collected }
 
 function nextHeartDropDelay() {
-  return 20 + Math.random() * 10; // 20–30s
+  return 10; // fixed 10s
 }
 function resetHeartDrop() {
   floatHeart = null;
@@ -366,12 +367,7 @@ function updateFloatHeart(dt) {
     heartDropTimer = nextHeartDropDelay();
   }
 }
-function drawFloatHeart() {
-  if (!floatHeart) return;
-  const h = floatHeart;
-  const hx = h.x + h.w / 2;
-  const hy = h.y + h.h / 2 + Math.sin(h.bob) * 3;
-  const s = 1.15; // match HUD heart scale roughly
+function drawHeartGlyph(hx, hy, s) {
   ctx.save();
   ctx.globalAlpha = 0.92;
   // soft glow
@@ -392,6 +388,33 @@ function drawFloatHeart() {
   ctx.fillStyle = "rgba(255,255,255,0.55)";
   ctx.fillRect(hx - 6, hy - 2, 3, 3);
   ctx.restore();
+}
+function drawFloatHeart() {
+  if (!floatHeart) return;
+  const h = floatHeart;
+  drawHeartGlyph(h.x + h.w / 2, h.y + h.h / 2 + Math.sin(h.bob) * 3, 1.15);
+}
+function updateHeartPickups(dt) {
+  for (const h of heartPickups) {
+    if (h.collected) continue;
+    h.bob += dt * 3.2;
+    if (hearts >= MAX_HEARTS) continue;
+    if (aabb(player, h)) {
+      hearts = Math.min(MAX_HEARTS, hearts + 1);
+      spawnParticles(h.x + h.w / 2, h.y + h.h / 2, "#ff4d6d", 10);
+      spawnParticles(h.x + h.w / 2, h.y + h.h / 2, "#ffffff", 4);
+      try { sfx.coin(); } catch (e) {}
+      h.collected = true;
+    }
+  }
+}
+function drawHeartPickups() {
+  for (const h of heartPickups) {
+    if (h.collected) continue;
+    const hx = h.x + h.w / 2;
+    const hy = h.y + h.h / 2 + Math.sin(h.bob) * 3;
+    drawHeartGlyph(hx, hy, 1.05);
+  }
 }
 let callouts = []; // floating text
 let slot = null; // slot machine overlay (gameplay keeps running)
@@ -497,6 +520,7 @@ function updateCrackedPlatforms(dt) {
 
 function resetLevel(full) {
   coins = makeCoins();
+  heartPickups = makeHeartPickups();
   enemies = makeEnemies();
   particles = [];
   callouts = [];

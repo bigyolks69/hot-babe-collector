@@ -201,6 +201,7 @@ function updatePlay(dt) {
 
   // Sky heart drop (timer only advances here — paused in menu/win/death)
   updateFloatHeart(dt);
+  updateHeartPickups(dt);
 
   // camera (boss lock overrides the follow when the arena is sealed)
   const bossLocked = boss && (boss.dual ? boss.locked && !boss.defeated : boss.locked && !boss.defeated);
@@ -366,6 +367,7 @@ function resetAfterDeath() {
   syncRecent(); // a babe lost down to 0 leaves the tray now
   // Respawn coins AND enemies at original positions/state (same as level start)
   coins = makeCoins();
+  heartPickups = makeHeartPickups();
   enemies = makeEnemies();
   restorePlatforms();
   // Boss fight: reset HP / clear minions & coins; player is already parked at the arena entrance CP

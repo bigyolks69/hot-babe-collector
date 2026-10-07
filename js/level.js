@@ -62,6 +62,49 @@ const CP_ENEMY_CLEAR = 4; // tiles kept clear of any enemy patrol range
 const FLY_W = 26, FLY_H = 20, FLY_BOB = 8, FLY_SWOOP = 80, FLY_HEAD_CLEAR = 2;
 const FLY_RANGE = 150, FLY_TELL = 0.3, FLY_DIVE_V = 120, FLY_RISE_V = 70, FLY_HOLD = 0.45, FLY_COOL = 1.4;
 
+
+// L4 map hearts: ~2 placed pickups between each consecutive checkpoint (and last CP→goal).
+function placeMapHearts(plats, keptCps, endX, keptPicks, enemies, nPerSeg) {
+  nPerSeg = nPerSeg == null ? 2 : nPerSeg;
+  const hearts = [];
+  const anchors = keptCps.map(c => c.x).concat([endX]);
+  const blocked = (x) =>
+    keptPicks.some(([px]) => Math.abs(px - x) < 2) ||
+    enemies.some(e => Math.abs(e.x - x) < 2) ||
+    keptCps.some(c => Math.abs(c.x - x) < 4) ||
+    hearts.some(([hx]) => Math.abs(hx - x) < 5) ||
+    (Math.abs(endX - x) < 3);
+  function findSpot(targetX) {
+    for (let d = 0; d < 50; d++) {
+      const xs = d === 0 ? [targetX] : [targetX + d, targetX - d];
+      for (const xx of xs) {
+        if (xx < 4 || xx > endX - 2 || blocked(xx)) continue;
+        // Prefer solid ground
+        const g = plats.find(p => !p.cracked && p.y === GROUND_Y && p.x <= xx && p.x + p.w >= xx + 1);
+        if (g) return [xx, GROUND_Y - 2];
+        // Else solid elevated airwalk (not cracked)
+        const elev = plats.filter(p => !p.cracked && p.h === 1 && p.y < GROUND_Y && p.x <= xx && p.x + p.w >= xx + 1);
+        if (elev.length) {
+          elev.sort((a, b) => a.y - b.y); // highest first
+          return [xx, elev[0].y - 2];
+        }
+      }
+    }
+    return null;
+  }
+  for (let i = 0; i < anchors.length - 1; i++) {
+    const a = anchors[i], b = anchors[i + 1];
+    const span = b - a;
+    if (span < 10) continue;
+    for (let k = 1; k <= nPerSeg; k++) {
+      const t = k / (nPerSeg + 1);
+      const spot = findSpot(Math.round(a + span * t));
+      if (spot) hearts.push(spot);
+    }
+  }
+  return hearts;
+}
+
 function buildLevel(def, diff) {
   const plats = [], picks = [], slots = [], cps = [], cutSpots = [], offs = [];
   let ox = 0, goalX = null;
@@ -137,6 +180,10 @@ function buildLevel(def, diff) {
     }
   }
   keptCps.sort((a, b) => a.x - b.x);
+  // L4: ~2 heart pickups between each checkpoint (incl. last CP→goal)
+  const heartPicks = (def.id === 4)
+    ? placeMapHearts(plats, keptCps, endX, keptPicks, chosen.concat(flyers), 2)
+    : [];
   // Pits: cut a 2-tile gap into a share of the marked ground spots (never under a pickup/enemy/flag)
   const blocked = x => keptPicks.some(([px]) => Math.abs(px - x) < 3) || chosen.some(e => Math.abs(e.x - x) < 3) ||
     keptCps.some(c => Math.abs(c.x - x) < 4) || (goalX != null && Math.abs(goalX - x) < 4);
@@ -153,7 +200,7 @@ function buildLevel(def, diff) {
   const floorY = def.bossFloorY != null ? def.bossFloorY : GROUND_Y;
   return {
     id: def.id, name: def.name, theme: LEVEL_THEMES[def.theme] || LEVEL_THEMES.dusk, diff,
-    width, plats, picks: keptPicks, enemySlots: chosen.concat(flyers), pits: cuts, boss: !!def.boss,
+    width, plats, picks: keptPicks, hearts: heartPicks, enemySlots: chosen.concat(flyers), pits: cuts, boss: !!def.boss,
     bossKind: def.bossKind || (def.boss ? "main" : null),
     vertical: !!def.vertical, bossFloorY: floorY,
     bossLockImmediate: !!def.bossLockImmediate, startMid: !!def.startMid,
@@ -197,6 +244,13 @@ function makeCoins() {
       collected: false, bob: Math.random() * Math.PI * 2,
     };
   });
+}
+function makeHeartPickups() {
+  const hw = 22, hh = 20;
+  return (level.hearts || []).map(([tx, ty]) => ({
+    x: tx * TILE + (TILE - hw) / 2, y: ty * TILE + 4, w: hw, h: hh,
+    collected: false, bob: Math.random() * Math.PI * 2,
+  }));
 }
 
 // Enemy sprites (Iris): Mini Oni = walker, Mochi Slime = hopper. 32x32, face RIGHT, feet on the bottom

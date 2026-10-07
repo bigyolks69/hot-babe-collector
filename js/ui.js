@@ -218,7 +218,8 @@ function drawWorld() {
   ctx.fill();
   }
 
-  // sky heart drop (world space; HUD hearts stay in drawHUD)
+  // map + sky hearts (world space; HUD hearts stay in drawHUD)
+  drawHeartPickups();
   drawFloatHeart();
 
   // player (pixel hero or fallback shapes)
