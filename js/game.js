@@ -355,18 +355,21 @@ const player = {
 };
 
 
-const CRACK_STAND = 0.6;   // stand time before shake
+const CRACK_STAND = 0.6;   // armed delay before shake
 const CRACK_SHAKE = 0.35;  // shake then fall
 function updateCrackedPlatforms(dt) {
-  let standing = null;
-  if (player.onGround) {
-    const feet = player.y + player.h;
-    for (const p of platforms) {
-      if (!p.cracked || p.fallen) continue;
-      const x = p.x * TILE, y = p.y * TILE, w = p.w * TILE;
-      if (player.x + player.w > x + 4 && player.x < x + w - 4 && Math.abs(feet - y) < 6) {
-        standing = p; break;
-      }
+  // Brief foot contact arms a cracked plat; once armed the timer keeps running
+  // even if the player already dashed off (no continuous-stand requirement).
+  const feet = player.y + player.h;
+  for (const p of platforms) {
+    if (!p.cracked || p.fallen || p.crackArmed) continue;
+    const x = p.x * TILE, y = p.y * TILE, w = p.w * TILE;
+    const overlap = Math.min(player.x + player.w, x + w) - Math.max(player.x, x);
+    if (overlap < 2) continue;
+    // onGround + any brief overlap arms; timer then runs without needing to stay
+    if (player.onGround && Math.abs(feet - y) < 8) {
+      p.crackArmed = true;
+      p.crackTimer = p.crackTimer || 0;
     }
   }
   for (const p of platforms) {
@@ -377,7 +380,7 @@ function updateCrackedPlatforms(dt) {
       p.fallT = (p.fallT || 0) + dt;
       continue;
     }
-    if (p === standing) {
+    if (p.crackArmed) {
       p.crackTimer = (p.crackTimer || 0) + dt;
       if (p.crackTimer >= CRACK_STAND + CRACK_SHAKE) {
         p.fallen = true; p.falling = true; p.fallT = 0;
@@ -388,8 +391,6 @@ function updateCrackedPlatforms(dt) {
           spawnParticles(cx + (i + 0.5) * (pw / Math.max(1, p.w)), cy + 4, "#6a4a38", 2);
         }
       }
-    } else {
-      p.crackTimer = 0;
     }
   }
 }

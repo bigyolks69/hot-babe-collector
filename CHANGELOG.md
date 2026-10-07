@@ -28,6 +28,8 @@ No build step. Classic `<script>` tags (not ES modules) so offline `file://` kee
 Script load order (do not reorder): boot → audio → babes → input → cards → level → game → boss → update → ui → main.
 
 ## Recent changes
+- **L4 cliff gaps:** remove blue safety airwalks beside cracked spans; widen those pits ~1.5×; brief foot contact arms crack (timer keeps running after dash-off). Cache `?v=l4cliff2`.
+
 - **L4 Neon Overpass redesign:** many more built-in cliffs/pits; solid elevated airwalks; cracked airwalks mostly over voids (break → pit death). Ghost leftover after crack fixed (`fallT` never advanced → non-collidable ledge stayed drawn). Debris burst on break; fallen plats stop drawing immediately. Restore-on-death unchanged. Cache `?v=l4cliff1`.
 
 - **Mobile BGM silent until refresh:** await `AudioContext.resume()` before starting BGM; restart if wanted but not audibly playing (stale `bgm.src` / suspended ctx / html paused). Cache `?v=bgm1`.

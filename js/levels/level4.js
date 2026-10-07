@@ -1,93 +1,101 @@
 // Hot Babe Collector — Level 4 Neon Overpass (cliffs + cracked airwalks over pits)
 // Design: ground islands with many pits; solid elevated airwalks; cracked airwalks
 // often sit over empty air so a break means pit death, not a soft floor landing.
+// No blue safety ledges beside cracked spans — brief foot contact arms the crack.
 registerSections({
-  // Intro pad → first pit under cracked span → solid air → island
-  neonStart: { w: 38, plats: [
-      G(0, 8), G(14, 6), G(26, 12),
-      P(6, 13, 3), PC(9, 12, 5), P(16, 13, 3), PC(20, 11, 4), P(28, 13, 4), P(33, 11, 3) ],
-    picks: [[7, 11], [29, 11]], enemies: [
-      WK(3, 15, 0, 8, 75), WK(16, 15, 14, 20, 80), HP(29, 13, 28, 32, 40, 1, 0.2), WK(30, 15, 26, 37, 80, 2) ],
+  // Intro pad → first pit under cracked span → solid air on far island only
+  neonStart: { w: 46, plats: [
+      G(0, 7), G(16, 5), G(30, 16),
+      // gaps ~9 tiles (was ~6); cracked only — no adjacent blue safety
+      PC(8, 12, 7), PC(22, 11, 7),
+      P(32, 13, 4), P(38, 11, 3) ],
+    picks: [[33, 11], [39, 9]], enemies: [
+      WK(3, 15, 0, 7, 75), WK(18, 15, 16, 21, 80), HP(34, 13, 32, 36, 40, 1, 0.2), WK(36, 15, 30, 45, 80, 2) ],
     cps: [2], cuts: [] },
 
-  // Island hop with cracked bridges over 3–4 tile pits
-  cliffRun: { w: 44, plats: [
-      G(0, 5), G(9, 4), G(18, 5), G(28, 4), G(37, 7),
-      P(4, 13, 3), PC(6, 12, 4), P(13, 13, 3), PC(15, 11, 4),
-      P(22, 13, 3), PC(24, 12, 5), P(32, 13, 3), PC(34, 11, 4), P(40, 13, 3) ],
-    picks: [[14, 11], [33, 11]], enemies: [
-      WK(1, 15, 0, 5, 70), WK(11, 15, 9, 13, 80), WK(20, 15, 18, 23, 85),
-      WK(30, 15, 28, 32, 80, 2), HP(41, 13, 40, 43, 40, 1, 0.3) ],
+  // Island hop with cracked bridges over ~1.5× wider pits; no blue beside cracked
+  cliffRun: { w: 56, plats: [
+      G(0, 5), G(13, 4), G(25, 5), G(38, 4), G(50, 6),
+      // gaps ~8 tiles (was 4–5); cracked spans only
+      PC(6, 12, 6), PC(18, 11, 6), PC(31, 12, 6), PC(43, 11, 6),
+      P(52, 13, 3) ],
+    picks: [[14, 13], [39, 13]], enemies: [
+      WK(1, 15, 0, 5, 70), WK(14, 15, 13, 17, 80), WK(27, 15, 25, 30, 85),
+      WK(40, 15, 38, 42, 80, 2), HP(53, 13, 52, 55, 40, 1, 0.3) ],
     cps: [2], cuts: [] },
 
-  // Cracked dash: solid airwalks + cracked over mid pits, thin ground islands
-  crackDash: { w: 42, plats: [
-      G(0, 5), G(10, 4), G(20, 5), G(30, 4), G(38, 4),
-      P(3, 13, 3), PC(6, 12, 5), P(14, 13, 3), PC(17, 11, 4),
-      P(24, 13, 4), PC(28, 12, 3), P(34, 13, 3), PC(36, 11, 3) ],
-    picks: [[15, 11], [25, 11]], enemies: [
-      WK(1, 15, 0, 5, 75), WK(12, 15, 10, 14, 85), WK(22, 15, 20, 25, 90),
-      HP(25, 13, 24, 28, 45, 2, 0.4), WK(32, 15, 30, 34, 80, 2) ],
+  // Cracked dash: thin islands, cracked over mid pits — no adjacent blue safety
+  crackDash: { w: 54, plats: [
+      G(0, 5), G(14, 4), G(27, 5), G(40, 4), G(50, 4),
+      PC(6, 12, 7), PC(19, 11, 7), PC(33, 12, 6), PC(45, 11, 5),
+      P(51, 13, 2) ],
+    picks: [[15, 13], [28, 13]], enemies: [
+      WK(1, 15, 0, 5, 75), WK(15, 15, 14, 18, 85), WK(29, 15, 27, 32, 90),
+      HP(41, 15, 40, 44, 45, 2, 0.4), WK(42, 15, 40, 44, 80, 2) ],
     cps: [2], cuts: [] },
 
-  // Long cracked span over a wide pit — must commit or take solid side path
-  crackSpan: { w: 40, plats: [
-      G(0, 6), G(18, 5), G(32, 8),
-      P(4, 13, 3), PC(8, 12, 5), P(14, 13, 3),
-      PC(20, 11, 5), P(26, 13, 3), PC(30, 12, 3), P(35, 13, 3) ],
-    picks: [[5, 11], [27, 11]], enemies: [
-      WK(2, 15, 0, 6, 80), WK(20, 15, 18, 23, 90), WK(34, 15, 32, 40, 95),
-      HP(15, 13, 14, 17, 40, 1, 0.3) ],
+  // Long cracked span over a wide pit — commit on crack, or take high solid side path
+  crackSpan: { w: 48, plats: [
+      G(0, 6), G(22, 5), G(38, 10),
+      // cracked commit over widened pits
+      PC(8, 12, 8), PC(28, 12, 6),
+      // high solid alternate (not beside cracked — different height/route)
+      P(3, 10, 3), P(9, 8, 3), P(15, 8, 3), P(19, 10, 3),
+      P(40, 13, 3), P(44, 11, 3) ],
+    picks: [[4, 8], [41, 11]], enemies: [
+      WK(2, 15, 0, 6, 80), WK(24, 15, 22, 27, 90), WK(40, 15, 38, 48, 95),
+      HP(16, 8, 15, 18, 40, 1, 0.3) ],
     cps: [2], cuts: [] },
 
-  // High neon road with ground mostly gone — airwalks required, cracked shortcuts over voids
-  neonHigh: { w: 40, plats: [
-      G(0, 5), G(14, 4), G(28, 5), G(36, 4),
-      P(3, 13, 3), PC(7, 11, 4), P(12, 9, 3), P(16, 9, 4),
-      PC(21, 9, 4), P(26, 11, 3), PC(30, 11, 4), P(35, 13, 3) ],
-    picks: [[17, 7], [36, 11]], enemies: [
-      WK(1, 15, 0, 5, 80), WK(16, 15, 14, 18, 90), WK(30, 15, 28, 33, 95, 2),
-      HP(17, 9, 16, 20, 40, 1, 0.5) ],
+  // High neon road — solid mid airwalks are the required route; cracked = shortcuts
+  neonHigh: { w: 46, plats: [
+      G(0, 5), G(16, 4), G(32, 5), G(40, 6),
+      P(3, 13, 3), PC(8, 11, 5), P(14, 9, 3), P(18, 9, 4),
+      PC(24, 9, 5), P(30, 11, 3), PC(34, 11, 5), P(41, 13, 3) ],
+    picks: [[19, 7], [42, 11]], enemies: [
+      WK(1, 15, 0, 5, 80), WK(18, 15, 16, 20, 90), WK(34, 15, 32, 37, 95, 2),
+      HP(19, 9, 18, 22, 40, 1, 0.5) ],
     cuts: [] },
 
-  // Pillar columns with pits between; cracked floats over the gaps
-  neonGauntlet: { w: 42, plats: [
-      G(0, 4), G(10, 3), G(20, 3), G(30, 3), G(38, 4),
-      COL(5, 13, 2), COL(14, 12, 2), COL(24, 13, 2), COL(34, 12, 2),
-      PC(7, 11, 4), P(17, 10, 3), PC(27, 11, 4), P(37, 13, 3) ],
-    picks: [[8, 9], [18, 8], [35, 10]], enemies: [
-      WK(1, 15, 0, 4, 80), WK(11, 15, 10, 13, 90), WK(21, 15, 20, 23, 95),
-      WK(31, 15, 30, 33, 90, 2), HP(18, 10, 17, 20, 45, 2, 0.5) ],
+  // Pillar columns with wider pits; cracked floats over the gaps
+  neonGauntlet: { w: 50, plats: [
+      G(0, 4), G(12, 3), G(24, 3), G(36, 3), G(46, 4),
+      // gaps ~5–6 (was ~3–4) under cracked
+      COL(6, 13, 2), COL(17, 12, 2), COL(29, 13, 2), COL(41, 12, 2),
+      PC(8, 11, 5), P(20, 10, 3), PC(32, 11, 5), P(44, 13, 3) ],
+    picks: [[9, 9], [21, 8], [42, 10]], enemies: [
+      WK(1, 15, 0, 4, 80), WK(13, 15, 12, 15, 90), WK(25, 15, 24, 27, 95),
+      WK(37, 15, 36, 39, 90, 2), HP(21, 10, 20, 23, 45, 2, 0.5) ],
     cps: [2], cuts: [] },
 
-  // Mixed: solid mid airwalk chain over a long pit trench
-  overpass: { w: 36, plats: [
-      G(0, 5), G(28, 8),
-      P(5, 13, 3), P(9, 12, 3), P(13, 11, 4), PC(18, 11, 4), P(23, 12, 3),
-      PC(12, 13, 3), P(30, 13, 4) ],
-    picks: [[14, 9], [31, 11]], enemies: [
-      WK(1, 15, 0, 5, 75), WK(30, 15, 28, 36, 90), HP(14, 11, 13, 17, 40, 1, 0.4),
+  // Mixed: solid mid airwalk chain over a long pit trench (meaningful route kept)
+  overpass: { w: 40, plats: [
+      G(0, 5), G(32, 8),
+      P(5, 13, 3), P(9, 12, 3), P(13, 11, 4), PC(18, 11, 4), P(24, 12, 3),
+      PC(14, 13, 3), P(34, 13, 4) ],
+    picks: [[14, 9], [35, 11]], enemies: [
+      WK(1, 15, 0, 5, 75), WK(34, 15, 32, 40, 90), HP(14, 11, 13, 17, 40, 1, 0.4),
       WK(10, 12, 9, 12, 50, 2) ],
     cps: [2], cuts: [] },
 
-  // Zigzag air over pit islands (cliffier than shared zigzag)
-  neonZig: { w: 32, plats: [
-      G(0, 4), G(12, 3), G(22, 3), G(28, 4),
-      P(5, 13, 3), PC(8, 12, 4), P(14, 11, 3), PC(18, 13, 3), P(24, 11, 3) ],
+  // Zigzag air over wider pit islands — cracked over gaps, solid only on islands
+  neonZig: { w: 40, plats: [
+      G(0, 4), G(14, 3), G(26, 3), G(34, 4),
+      PC(6, 12, 6), P(14, 11, 3), PC(20, 13, 5), P(27, 11, 2) ],
     picks: [[15, 9]], enemies: [
-      HP(15, 11, 14, 17, 35, 2, 0.2), WK(1, 15, 0, 4, 55), WK(24, 15, 22, 25, 70, 2) ],
+      HP(15, 11, 14, 17, 35, 2, 0.2), WK(1, 15, 0, 4, 55), WK(28, 15, 26, 29, 70, 2) ],
     cuts: [] },
 
-  // Breather with short pit + one cracked tease (still fair)
-  neonRest: { w: 18, plats: [
-      G(0, 10), G(14, 4),
-      P(8, 13, 3), PC(11, 12, 3) ],
-    picks: [[9, 11]], enemies: [], cps: [3], cuts: [] },
+  // Breather with widened pit + one cracked tease (no blue beside it)
+  neonRest: { w: 22, plats: [
+      G(0, 10), G(17, 5),
+      PC(11, 12, 5) ],
+    picks: [[2, 13]], enemies: [], cps: [3], cuts: [] },
 
-  neonFinale: { w: 24, plats: [
-      G(0, 6), G(10, 14),
-      P(5, 13, 3), PC(7, 12, 3), P(14, 13, 3), P(18, 11, 3) ],
-    picks: [[19, 9]], enemies: [], goal: 20 },
+  neonFinale: { w: 28, plats: [
+      G(0, 6), G(14, 14),
+      PC(7, 12, 5), P(16, 13, 3), P(20, 11, 3) ],
+    picks: [[21, 9]], enemies: [], goal: 24 },
 });
 
 registerLevel({
