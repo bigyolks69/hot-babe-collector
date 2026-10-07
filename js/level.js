@@ -30,7 +30,7 @@ const DIFFICULTY = {
   1: { enemySpeed: 1.0, enemyCount: 1.0, pitFreq: 1.0, dropRate: 1.0 },
   2: { enemySpeed: 1.4, enemyCount: 1.5, pitFreq: 1.4, dropRate: 1.0 },
   3: { enemySpeed: 1.0, enemyCount: 0.0, pitFreq: 0.0, dropRate: 1.0 },
-  4: { enemySpeed: 1.6, enemyCount: 1.7, pitFreq: 1.2, dropRate: 1.0 },
+  4: { enemySpeed: 1.6, enemyCount: 1.7, pitFreq: 1.8, dropRate: 1.0 },
   5: { enemySpeed: 1.2, enemyCount: 1.2, pitFreq: 0.0, dropRate: 1.0 },
   6: { enemySpeed: 1.0, enemyCount: 0.0, pitFreq: 0.0, dropRate: 1.0 },
 };

@@ -62,13 +62,14 @@ function drawWorld() {
   const th = level.theme;
   const viewL = cameraX - 64, viewR = cameraX + W + 64;
   for (const p of platforms) {
-    if (p.fallen && (p.fallT || 0) > 0.8) continue;
-    const x = p.x*TILE, y = p.y*TILE + (p.fallen ? Math.min(120, (p.fallT || 0) * 220) : 0);
+    // Fallen cracked plats are fully destroyed (debris = particles only). Old bug kept
+    // fallT stuck at ~0 so a non-collidable "ghost" ledge stayed fully opaque.
+    if (p.fallen) continue;
+    const x = p.x*TILE, y = p.y*TILE;
     const w = p.w*TILE, h = p.h*TILE;
     if (x + w < viewL || x > viewR) continue;
-    const shakeX = (p.cracked && p.crackTimer > CRACK_STAND && !p.fallen) ? Math.sin(performance.now() / 30) * 2 : 0;
+    const shakeX = (p.cracked && p.crackTimer > CRACK_STAND) ? Math.sin(performance.now() / 30) * 2 : 0;
     // dirt body
-    ctx.globalAlpha = p.fallen ? Math.max(0, 1 - (p.fallT || 0) / 0.8) : 1;
     ctx.fillStyle = p.cracked ? "#6a4a38" : th.dirt;
     ctx.fillRect(x + shakeX, y, w, h);
     // grass top
@@ -77,7 +78,7 @@ function drawWorld() {
     // pixel edge
     ctx.fillStyle = th.edge;
     for (let i = 0; i < w; i += 8) ctx.fillRect(x + shakeX + i, y + 8, 6, 3);
-    if (p.cracked && !p.fallen) {
+    if (p.cracked) {
       ctx.strokeStyle = "rgba(20,10,0,0.55)"; ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(x + 4 + shakeX, y + 3); ctx.lineTo(x + w * 0.4 + shakeX, y + 7);
@@ -85,7 +86,6 @@ function drawWorld() {
       ctx.moveTo(x + w * 0.55 + shakeX, y + 4); ctx.lineTo(x + w - 4 + shakeX, y + 6);
       ctx.stroke();
     }
-    ctx.globalAlpha = 1;
     // bricks hint on tall
     if (h > TILE) {
       ctx.fillStyle = "rgba(0,0,0,0.15)";

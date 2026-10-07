@@ -28,6 +28,8 @@ No build step. Classic `<script>` tags (not ES modules) so offline `file://` kee
 Script load order (do not reorder): boot → audio → babes → input → cards → level → game → boss → update → ui → main.
 
 ## Recent changes
+- **L4 Neon Overpass redesign:** many more built-in cliffs/pits; solid elevated airwalks; cracked airwalks mostly over voids (break → pit death). Ghost leftover after crack fixed (`fallT` never advanced → non-collidable ledge stayed drawn). Debris burst on break; fallen plats stop drawing immediately. Restore-on-death unchanged. Cache `?v=l4cliff1`.
+
 - **Mobile BGM silent until refresh:** await `AudioContext.resume()` before starting BGM; restart if wanted but not audibly playing (stale `bgm.src` / suspended ctx / html paused). Cache `?v=bgm1`.
 
 - **Aura rename + Refresh Cache:** frames renamed to `art/vfx/aura/aura_ss_0.png`…`aura_ss_5.png` (`?v=ss1`) to break sticky iOS/Pages cache of punched `aura_fire_*`; Refresh Cache clears Cache API then `location.replace` with unique `?_=`.

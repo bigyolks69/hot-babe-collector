@@ -358,11 +358,6 @@ const player = {
 const CRACK_STAND = 0.6;   // stand time before shake
 const CRACK_SHAKE = 0.35;  // shake then fall
 function updateCrackedPlatforms(dt) {
-  if (!player.onGround) {
-    for (const p of platforms) {
-      if (p.cracked && p.crackTimer != null && !p.falling) { /* keep timer only while standing */ }
-    }
-  }
   let standing = null;
   if (player.onGround) {
     const feet = player.y + player.h;
@@ -375,20 +370,28 @@ function updateCrackedPlatforms(dt) {
     }
   }
   for (const p of platforms) {
-    if (!p.cracked || p.fallen) continue;
+    if (!p.cracked) continue;
+    // Fallen plats stay in the array for restore-on-death, but fallT advances so
+    // any brief debris draw can expire. solidAt already skips p.fallen.
+    if (p.fallen) {
+      p.fallT = (p.fallT || 0) + dt;
+      continue;
+    }
     if (p === standing) {
       p.crackTimer = (p.crackTimer || 0) + dt;
       if (p.crackTimer >= CRACK_STAND + CRACK_SHAKE) {
         p.fallen = true; p.falling = true; p.fallT = 0;
-        spawnParticles(p.x * TILE + p.w * TILE / 2, p.y * TILE, "#c4a070", 10);
+        // Burst debris across the whole ledge so nothing looks like a leftover platform
+        const cx = p.x * TILE, cy = p.y * TILE, pw = p.w * TILE;
+        for (let i = 0; i < Math.max(3, p.w); i++) {
+          spawnParticles(cx + (i + 0.5) * (pw / Math.max(1, p.w)), cy + 4, "#c4a070", 4);
+          spawnParticles(cx + (i + 0.5) * (pw / Math.max(1, p.w)), cy + 4, "#6a4a38", 2);
+        }
       }
-    } else if (!p.falling) {
+    } else {
       p.crackTimer = 0;
     }
-    if (p.falling && !p.fallen) { /* marked fallen above */ }
-    if (p.fallen) p.fallT = (p.fallT || 0) + dt;
   }
-  // Drop fallen from collision list (keep in array with fallen flag — solidAt skips)
 }
 
 function resetLevel(full) {
