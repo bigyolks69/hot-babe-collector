@@ -69,15 +69,18 @@ function drawWorld() {
     const w = p.w*TILE, h = p.h*TILE;
     if (x + w < viewL || x > viewR) continue;
     const shakeX = (p.cracked && p.crackTimer > CRACK_STAND) ? Math.sin(performance.now() / 30) * 2 : 0;
-    // dirt body
+    // dirt body — cracked undersides drawn thin (~1/4 prior dark band); collision h unchanged
     ctx.fillStyle = p.cracked ? "#6a4a38" : th.dirt;
-    ctx.fillRect(x + shakeX, y, w, h);
+    const grassH = 8;
+    const darkH = p.cracked ? Math.max(4, Math.round((h - grassH) / 4)) : (h - grassH); // was ~24px → ~6px
+    const bodyH = p.cracked ? (grassH + darkH) : h; // cracked visual ~14px; solids keep full h
+    ctx.fillRect(x + shakeX, y, w, bodyH);
     // grass top
     ctx.fillStyle = p.cracked ? "#c4a070" : th.grass;
-    ctx.fillRect(x + shakeX, y, w, 8);
+    ctx.fillRect(x + shakeX, y, w, grassH);
     // pixel edge
     ctx.fillStyle = th.edge;
-    for (let i = 0; i < w; i += 8) ctx.fillRect(x + shakeX + i, y + 8, 6, 3);
+    for (let i = 0; i < w; i += 8) ctx.fillRect(x + shakeX + i, y + grassH, 6, 3);
     if (p.cracked) {
       ctx.strokeStyle = "rgba(20,10,0,0.55)"; ctx.lineWidth = 1.5;
       ctx.beginPath();

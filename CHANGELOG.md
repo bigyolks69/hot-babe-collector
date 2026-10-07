@@ -28,6 +28,8 @@ No build step. Classic `<script>` tags (not ES modules) so offline `file://` kee
 Script load order (do not reorder): boot → audio → babes → input → cards → level → game → boss → update → ui → main.
 
 ## Recent changes
+- **L4 polish (variation + look + babes on cracks):** mix 1/2/3 short cracked planks per gap (hop gaps when multiple); thin cracked dark underside ~1/4 (24px→6px visual, collision unchanged); bias L4 babe pickups onto breakable tops (jump-on then jump-up). Cache `?v=l4var1`.
+
 - **L4 reach polish:** lower solid+cracked airwalks to 0-collection jump reach (max ~2.73 tiles / y≥13 from ground); cracked lengths ≤50% with 2+ short segments + small hop gaps on long pits; no gap-adjacent blue safety pads. Cache `?v=l4reach1`.
 
 - **L4 cliff gaps:** remove blue safety airwalks beside cracked spans; widen those pits ~1.5×; brief foot contact arms crack (timer keeps running after dash-off). Cache `?v=l4cliff2`.
