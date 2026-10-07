@@ -56,23 +56,36 @@ function drawBackground() {
 
 function drawWorld() {
   ctx.save();
-  ctx.translate(-Math.floor(cameraX), 0);
+  ctx.translate(-Math.floor(cameraX), -Math.floor(cameraY || 0));
 
   // platforms (only those on screen — levels are ~3x longer now)
   const th = level.theme;
   const viewL = cameraX - 64, viewR = cameraX + W + 64;
   for (const p of platforms) {
-    const x = p.x*TILE, y = p.y*TILE, w = p.w*TILE, h = p.h*TILE;
+    if (p.fallen && (p.fallT || 0) > 0.8) continue;
+    const x = p.x*TILE, y = p.y*TILE + (p.fallen ? Math.min(120, (p.fallT || 0) * 220) : 0);
+    const w = p.w*TILE, h = p.h*TILE;
     if (x + w < viewL || x > viewR) continue;
+    const shakeX = (p.cracked && p.crackTimer > CRACK_STAND && !p.fallen) ? Math.sin(performance.now() / 30) * 2 : 0;
     // dirt body
-    ctx.fillStyle = th.dirt;
-    ctx.fillRect(x, y, w, h);
+    ctx.globalAlpha = p.fallen ? Math.max(0, 1 - (p.fallT || 0) / 0.8) : 1;
+    ctx.fillStyle = p.cracked ? "#6a4a38" : th.dirt;
+    ctx.fillRect(x + shakeX, y, w, h);
     // grass top
-    ctx.fillStyle = th.grass;
-    ctx.fillRect(x, y, w, 8);
+    ctx.fillStyle = p.cracked ? "#c4a070" : th.grass;
+    ctx.fillRect(x + shakeX, y, w, 8);
     // pixel edge
     ctx.fillStyle = th.edge;
-    for (let i = 0; i < w; i += 8) ctx.fillRect(x + i, y + 8, 6, 3);
+    for (let i = 0; i < w; i += 8) ctx.fillRect(x + shakeX + i, y + 8, 6, 3);
+    if (p.cracked && !p.fallen) {
+      ctx.strokeStyle = "rgba(20,10,0,0.55)"; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x + 4 + shakeX, y + 3); ctx.lineTo(x + w * 0.4 + shakeX, y + 7);
+      ctx.moveTo(x + w * 0.35 + shakeX, y + 2); ctx.lineTo(x + w * 0.7 + shakeX, y + 8);
+      ctx.moveTo(x + w * 0.55 + shakeX, y + 4); ctx.lineTo(x + w - 4 + shakeX, y + 6);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
     // bricks hint on tall
     if (h > TILE) {
       ctx.fillStyle = "rgba(0,0,0,0.15)";
@@ -316,7 +329,8 @@ function drawHUD() {
     ctx.font = "bold 13px sans-serif";
     ctx.textAlign = "center";
     ctx.fillText("LEVEL " + levelNum + " / " + LEVELS.length, W / 2, ly + 15);
-    const prog = (boss && boss.locked)
+    const bossLocked = boss && (boss.dual ? boss.locked : boss.locked);
+    const prog = bossLocked
       ? Math.max(0, 1 - boss.hp / boss.maxHp)
       : Math.max(0, Math.min(1, (player.x - checkpoints[0].x) / Math.max(1, (goal.x || LEVEL_W * TILE) - checkpoints[0].x)));
     ctx.fillStyle = "rgba(255,255,255,0.18)";

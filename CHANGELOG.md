@@ -29,6 +29,9 @@ Script load order (do not reorder): boot → audio → babes → input → cards
 
 ## Recent changes
 
+- **Levels 4–6:** Neon Overpass (cracked plats, denser/faster foes, flyers), Capsule Yard (vertical climb + 2 HP mini demon), Dual Demon Arena (two 3 HP demons, Rare+ when both down). HUD `LEVEL x / 6`.
+- **Cracked platforms:** stand ~0.6s → shake → fall; restore on death/respawn. Required path stays mostly solid.
+- **Level files split:** `js/level.js` registry + `js/levels/common.js` / `level1.js`…`level6.js` (edit one level without opening the mega file).
 - **Buff toast timing:** fully visible **3.5s** (plus 0.2s in / 0.35s out).
 - **Buff toast percents:** shows total stack bonus, e.g. `(14% faster, 10% higher jump)` at 2 stacks.
 - **Cache-bust:** `index.html` script/css URLs use `?v=` so browsers pick up toast (not old Continue popup).

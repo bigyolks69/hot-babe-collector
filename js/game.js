@@ -250,6 +250,7 @@ let hearts = 3;
 let invuln = 0;
 let checkpointIdx = 0;
 let cameraX = 0;
+let cameraY = 0;
 let coins = [];
 let enemies = [];
 let particles = [];
@@ -314,6 +315,43 @@ const player = {
   prevX: 64, prevY: 15 * TILE - PLAYER_H,
 };
 
+
+const CRACK_STAND = 0.6;   // stand time before shake
+const CRACK_SHAKE = 0.35;  // shake then fall
+function updateCrackedPlatforms(dt) {
+  if (!player.onGround) {
+    for (const p of platforms) {
+      if (p.cracked && p.crackTimer != null && !p.falling) { /* keep timer only while standing */ }
+    }
+  }
+  let standing = null;
+  if (player.onGround) {
+    const feet = player.y + player.h;
+    for (const p of platforms) {
+      if (!p.cracked || p.fallen) continue;
+      const x = p.x * TILE, y = p.y * TILE, w = p.w * TILE;
+      if (player.x + player.w > x + 4 && player.x < x + w - 4 && Math.abs(feet - y) < 6) {
+        standing = p; break;
+      }
+    }
+  }
+  for (const p of platforms) {
+    if (!p.cracked || p.fallen) continue;
+    if (p === standing) {
+      p.crackTimer = (p.crackTimer || 0) + dt;
+      if (p.crackTimer >= CRACK_STAND + CRACK_SHAKE) {
+        p.fallen = true; p.falling = true; p.fallT = 0;
+        spawnParticles(p.x * TILE + p.w * TILE / 2, p.y * TILE, "#c4a070", 10);
+      }
+    } else if (!p.falling) {
+      p.crackTimer = 0;
+    }
+    if (p.falling && !p.fallen) { /* marked fallen above */ }
+    if (p.fallen) p.fallT = (p.fallT || 0) + dt;
+  }
+  // Drop fallen from collision list (keep in array with fallen flag — solidAt skips)
+}
+
 function resetLevel(full) {
   coins = makeCoins();
   enemies = makeEnemies();
@@ -329,8 +367,10 @@ function resetLevel(full) {
   congrats = null;
   buffToast = null;
   buffPending = false;
+  restorePlatforms();
   if (level && level.boss) boss = makeBoss();
   else boss = null;
+  cameraY = 0;
   if (full) {
     checkpointIdx = 0;
     collection = loadCollection();
@@ -346,14 +386,21 @@ function resetLevel(full) {
     gallery.selected = null;
     gallery.filter = "all";
   }
-  const cp = checkpoints[checkpointIdx];
-  player.x = cp.x;
-  player.y = cp.y - player.h;
+  let cp = checkpoints[checkpointIdx];
+  if (level && level.startMid && boss) {
+    const mid = ((boss.arenaL || 0) + (boss.arenaR || LEVEL_W * TILE)) / 2;
+    player.x = mid - player.w / 2;
+    player.y = (level.bossFloorY != null ? level.bossFloorY : GROUND_Y) * TILE - player.h;
+  } else {
+    player.x = cp.x;
+    player.y = cp.y - player.h;
+  }
   player.vx = 0; player.vy = 0;
   player.onGround = false;
   player.coyote = 0; player.jumpBuf = 0; player.stun = 0; player.stompGrace = 0; player.fromStomp = false;
   player.prevX = player.x; player.prevY = player.y;
-  cameraX = Math.max(0, player.x - W*0.35);
+  cameraX = Math.max(0, Math.min(player.x - W*0.35, LEVEL_W * TILE - W));
+  cameraY = level && level.vertical ? Math.max(0, player.y - H * 0.55) : 0;
 }
 
 // Floating 1-tile ledges are one-way: walk/jump through from below/side, land from above.
@@ -363,6 +410,7 @@ function solidAt(px, py, pw, ph, mode) {
   // mode "land" includes one-way tops when falling; otherwise skip one-way (no side/ceiling block)
   const land = mode === "land";
   for (const p of platforms) {
+    if (p.fallen) continue;
     const x = p.x * TILE, y = p.y * TILE, w = p.w * TILE, h = p.h * TILE;
     if (!(px < x + w && px + pw > x && py < y + h && py + ph > y)) continue;
     if (isOneWayPlat(p)) {

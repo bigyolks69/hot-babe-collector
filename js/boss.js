@@ -1,303 +1,389 @@
 // Hot Babe Collector — boss.js
-// ---------- Gacha Machine Demon (Level 3 boss) ----------
-// 3 HP. Attacks telegraph clearly; the glowing crank is only stompable while it "jams"
-// after an attack (smoke + "OUT OF ORDER"). Hit → stunned recovery (cyan flash) before hostile.
-// Death resets HP + clears minions/projectiles
-// and parks the player at the arena entrance. Defeat → shake → rare-or-better slot pull → final win.
+// ---------- Gacha Machine Demon(s) ----------
+// L3 main: 3 HP, full kit, Rare+ reward. L5 mini: 2 HP, coins+one minion, normal pull.
+// L6 dual: two 3 HP demons, Rare+ when both down. Yellow failsafe ~12s on minion waves.
 const BOSS_HP = 3;
 const BOSS_W = 4 * TILE;   // 128
 const BOSS_H = 6 * TILE;   // 192
 const BOSS_CRANK_W = 28, BOSS_CRANK_H = 28;
 const BOSS_BEAM_WARN = 0.6, BOSS_BEAM_FIRE = 0.55, BOSS_BEAM_FIRE_LOW = 0.2;
-const BOSS_COIN_N = [3, 4, 5];     // coins per spit by phase (1–3)
+const BOSS_COIN_N = [3, 4, 5];
 const BOSS_MINION_N = [2, 3, 4];
 const BOSS_VULN = [1.6, 1.35, 1.15];
-const BOSS_HIT_STUN = 1.15; // post-stomp recovery before hostile again
+const BOSS_HIT_STUN = 1.15;
 const BOSS_IDLE = [1.1, 0.85, 0.65];
-const BOSS_MINION_VULN_FAILSAFE = 12; // always go yellow by then (minion-clear can be earlier)
+const BOSS_MINION_VULN_FAILSAFE = 12;
 const BOSS_ATTACKS = ["beam", "coins", "minions"];
+const BOSS_EDGE_PAD = 220;
 
-let boss = null; // null outside Level 3
+let boss = null; // single demon OR dual controller { dual:true, demons:[...] }
 
-function makeBoss() {
-  if (!level || !level.boss) return null;
-  const arenaL = level.arenaLeft != null ? level.arenaLeft : checkpoints[Math.min(1, checkpoints.length - 1)].x;
-  const arenaR = LEVEL_W * TILE;
-  const floor = GROUND_Y * TILE;
-  // Near the right edge, but inset so iPhone tray + jump never cover body/dome
-  const BOSS_EDGE_PAD = 220; // canvas px clear of bottom-right HUD / touch jump
-  const x = arenaR - BOSS_W - BOSS_EDGE_PAD;
-  const y = floor - BOSS_H;
+function makeDemonCaps() {
   const caps = [];
   for (let i = 0; i < 14; i++) {
     const b = BABE_POOL[i % BABE_POOL.length];
     caps.push({ id: b.id, a: Math.random() * Math.PI * 2, r: 10 + Math.random() * 28,
       sp: 1.2 + Math.random() * 1.6, bob: Math.random() * 6.28, col: ["#ff6ab0", "#7ec8ff", "#ffe66d", "#b48cff", "#7dff9a"][i % 5] });
   }
+  return caps;
+}
+
+function createDemon(opts) {
+  const floor = (opts.floorY != null ? opts.floorY : GROUND_Y) * TILE;
+  const scale = opts.scale != null ? opts.scale : 1;
+  const w = Math.round(BOSS_W * scale), h = Math.round(BOSS_H * scale);
+  const hp = opts.hp != null ? opts.hp : BOSS_HP;
   return {
-    x, y, w: BOSS_W, h: BOSS_H, hp: BOSS_HP, maxHp: BOSS_HP,
-    phase: 0, // hits taken
-    mode: "idle", modeT: 0, nextAtk: 0,
-    locked: false, arenaL, arenaR,
-    crank: { ox: 18, oy: BOSS_H - 70, w: BOSS_CRANK_W, h: BOSS_CRANK_H }, // relative to boss
-    beam: null, // { y, warn, fire, high }
-    coins: [],  // projectiles
-    minions: [],
-    caps, t: 0, shake: 0, flash: 0, grin: 0,
-    wallPlats: [], // temporary solid walls that close the arena
-    rewardPending: false, defeated: false,
+    x: opts.x, y: floor - h, w, h, hp, maxHp: hp,
+    phase: 0, mode: "idle", modeT: 0, nextAtk: 0, lastAtk: null,
+    arenaL: opts.arenaL, arenaR: opts.arenaR,
+    crank: { ox: Math.round(18 * scale), oy: h - Math.round(70 * scale), w: BOSS_CRANK_W, h: BOSS_CRANK_H },
+    beam: null, coins: [], minions: [],
+    caps: makeDemonCaps(), t: 0, shake: 0, flash: 0, grin: 0,
+    rewardPending: false, defeated: false, domeBroken: false,
+    attacks: opts.attacks || BOSS_ATTACKS.slice(),
+    minionKind: opts.minionKind || "both", // walker | hopper | both
+    rareReward: opts.rareReward !== false,
+    failsafe: opts.failsafe != null ? opts.failsafe : BOSS_MINION_VULN_FAILSAFE,
+    scale, label: opts.label || "GACHA MACHINE DEMON",
   };
 }
 
-function bossPhase() { return Math.min(2, boss ? boss.phase : 0); }
-function bossCrankRect() {
-  const c = boss.crank;
-  return { x: boss.x + c.ox, y: boss.y + c.oy, w: c.w, h: c.h };
+function makeBoss() {
+  if (!level || !level.boss) return null;
+  const kind = level.bossKind || "main";
+  const arenaL = level.arenaLeft != null ? level.arenaLeft : 0;
+  const arenaR = LEVEL_W * TILE;
+  const floorY = level.bossFloorY != null ? level.bossFloorY : GROUND_Y;
+
+  if (kind === "dual") {
+    // Full arena; left inset from left wall, right cleared of mobile tray
+    const left = createDemon({
+      x: arenaL + 56, arenaL, arenaR, floorY,
+      hp: BOSS_HP, rareReward: false, label: "GACHA DEMON L",
+    });
+    const right = createDemon({
+      x: arenaR - BOSS_W - BOSS_EDGE_PAD, arenaL, arenaR, floorY,
+      hp: BOSS_HP, rareReward: false, label: "GACHA DEMON R",
+    });
+    return {
+      dual: true, demons: [left, right],
+      locked: false, arenaL, arenaR, wallPlats: [],
+      defeated: false, rewardPending: false, mode: "idle",
+      get hp() { return this.demons.reduce((s, d) => s + Math.max(0, d.hp), 0); },
+      get maxHp() { return this.demons.reduce((s, d) => s + d.maxHp, 0); },
+    };
+  }
+
+  if (kind === "mini") {
+    const x = arenaR - Math.round(BOSS_W * 0.85) - BOSS_EDGE_PAD * 0.7;
+    return createDemon({
+      x, arenaL, arenaR, floorY, scale: 0.85, hp: 2,
+      attacks: ["coins", "minions"], minionKind: "walker",
+      rareReward: false, failsafe: 10, label: "MINI GACHA DEMON",
+    });
+  }
+
+  // main (L3)
+  const x = arenaR - BOSS_W - BOSS_EDGE_PAD;
+  const d = createDemon({ x, arenaL, arenaR, floorY, hp: BOSS_HP, rareReward: true });
+  d.locked = false; d.wallPlats = [];
+  return d;
 }
+
+function bossList() {
+  if (!boss) return [];
+  return boss.dual ? boss.demons : [boss];
+}
+function livingBosses() { return bossList().filter(d => !d.defeated && d.mode !== "done"); }
+function bossPhaseOf(d) { return Math.min(2, d ? d.phase : 0); }
+function bossPhase() { const d = livingBosses()[0] || bossList()[0]; return bossPhaseOf(d); }
+function bossCrankRect(d) {
+  d = d || (boss && !boss.dual ? boss : null);
+  if (!d || d.dual) return { x: 0, y: 0, w: 0, h: 0 };
+  const c = d.crank;
+  return { x: d.x + c.ox, y: d.y + c.oy, w: c.w, h: c.h };
+}
+
 function resetBossFight() {
   if (!boss) return;
-  // Clear fight-only state; keep position / arena / caps
-  boss.hp = BOSS_HP; boss.phase = 0; boss.mode = "idle"; boss.modeT = 0; boss.nextAtk = 0;
-  boss.beam = null; boss.coins = []; clearBossMinions();
-  boss.shake = 0; boss.flash = 0; boss.grin = 0; boss.rewardPending = false; boss.defeated = false; boss.domeBroken = false;
-  for (const c of boss.caps) { c.falling = false; delete c.wx; delete c.wy; delete c.vx; delete c.vy; }
-  // Remove the temporary walls so the next entry re-locks cleanly
-  if (boss.wallPlats.length) {
-    platforms = platforms.filter(p => !boss.wallPlats.includes(p));
-    boss.wallPlats = [];
+  for (const d of bossList()) {
+    d.hp = d.maxHp; d.phase = 0; d.mode = "idle"; d.modeT = 0; d.nextAtk = 0; d.lastAtk = null;
+    d.beam = null; d.coins = [];
+    d.shake = 0; d.flash = 0; d.grin = 0; d.rewardPending = false; d.defeated = false; d.domeBroken = false;
+    for (const c of d.caps) { c.falling = false; delete c.wx; delete c.wy; delete c.vx; delete c.vy; }
   }
-  boss.locked = false;
-  // Goal stays inactive until a fresh defeat
+  clearAllBossMinions();
+  const walls = boss.dual ? boss.wallPlats : boss.wallPlats;
+  if (walls && walls.length) {
+    platforms = platforms.filter(p => !walls.includes(p));
+    if (boss.dual) boss.wallPlats = [];
+    else boss.wallPlats = [];
+  }
+  if (boss.dual) { boss.locked = false; boss.defeated = false; boss.rewardPending = false; }
+  else boss.locked = false;
   if (goal) goal.active = false;
+  // Dual: re-park mid-arena on death
+  if (boss.dual && level && level.startMid) {
+    const mid = (boss.arenaL + boss.arenaR) / 2;
+    player.x = mid - player.w / 2;
+    player.y = (level.bossFloorY != null ? level.bossFloorY : GROUND_Y) * TILE - player.h;
+  }
 }
 
 function lockBossArena() {
-  if (!boss || boss.locked) return;
-  boss.locked = true;
-  // Solid wall just left of the arena entrance (and a matching right wall past the goal)
-  const left = { x: (boss.arenaL / TILE) - 1, y: 0, w: 1, h: GROUND_Y + 1 };
-  const right = { x: LEVEL_W - 1, y: 0, w: 1, h: GROUND_Y + 1 };
-  boss.wallPlats = [left, right];
+  if (!boss) return;
+  const locked = boss.dual ? boss.locked : boss.locked;
+  if (locked) return;
+  if (boss.dual) boss.locked = true; else boss.locked = true;
+  const arenaL = boss.dual ? boss.arenaL : boss.arenaL;
+  const left = { x: (arenaL / TILE) - 1, y: 0, w: 1, h: LEVEL_H };
+  const right = { x: LEVEL_W - 1, y: 0, w: 1, h: LEVEL_H };
+  if (boss.dual) boss.wallPlats = [left, right];
+  else boss.wallPlats = [left, right];
   platforms.push(left, right);
-  addCallout("GACHA DEMON!", "#ff5ec8");
+  addCallout(boss.dual ? "DUAL GACHA DEMONS!" : (boss.label || "GACHA DEMON!"), "#ff5ec8");
   sfx.win();
 }
 
-function pickBossAttack() {
-  // Prefer attacks the player hasn't just seen; escalate mix by phase
-  const opts = BOSS_ATTACKS.slice();
-  if (boss.lastAtk) {
-    const i = opts.indexOf(boss.lastAtk);
+function pickBossAttack(d) {
+  const opts = (d.attacks || BOSS_ATTACKS).slice();
+  if (d.lastAtk) {
+    const i = opts.indexOf(d.lastAtk);
     if (i >= 0 && opts.length > 1) opts.splice(i, 1);
   }
   return opts[Math.floor(Math.random() * opts.length)];
 }
 
-function beginBossAttack(kind) {
-  boss.lastAtk = kind; boss.mode = kind; boss.modeT = 0;
+function beginBossAttack(kind, d) {
+  d = d || (boss && !boss.dual ? boss : null);
+  if (!d || d.dual) return;
+  d.lastAtk = kind; d.mode = kind; d.modeT = 0;
+  const floorY = (level && level.bossFloorY != null) ? level.bossFloorY : GROUND_Y;
   if (kind === "beam") {
-    // Low beam ≈ ankle height (jump over); high beam ≈ jump apex height (stay on ground)
     const high = Math.random() < 0.5;
-    const y = high ? GROUND_Y * TILE - 118 : GROUND_Y * TILE - 12;
-    boss.beam = { y, high, warn: BOSS_BEAM_WARN, fire: 0, active: false, fireDur: high ? BOSS_BEAM_FIRE : BOSS_BEAM_FIRE_LOW };
-    boss.grin = 0.8;
+    const y = high ? floorY * TILE - 118 : floorY * TILE - 12;
+    d.beam = { y, high, warn: BOSS_BEAM_WARN, fire: 0, active: false, fireDur: high ? BOSS_BEAM_FIRE : BOSS_BEAM_FIRE_LOW };
+    d.grin = 0.8;
   } else if (kind === "coins") {
-    const n = BOSS_COIN_N[bossPhase()];
-    boss.coins = [];
+    const n = BOSS_COIN_N[Math.min(2, bossPhaseOf(d))];
+    d.coins = [];
     for (let i = 0; i < n; i++) {
-      const cx = boss.x + 20, cy = boss.y + 90;
+      const cx = d.x + 20, cy = d.y + 90 * (d.scale || 1);
       const tx = player.x + player.w / 2 + (i - (n - 1) / 2) * 50;
-      const dx = tx - cx, dy = (GROUND_Y * TILE - 20) - cy;
-      // Arc: give an upward launch so travel time is ~0.9–1.1s
-      const t = 0.95 + i * 0.08;
-      boss.coins.push({ x: cx, y: cy, w: 14, h: 14, vx: dx / t, vy: dy / t - 0.5 * GRAV * t, life: 2.4, spin: Math.random() * 6 });
+      const dx = tx - cx, dy = (floorY * TILE - 20) - cy;
+      const tt = 0.95 + i * 0.08;
+      d.coins.push({ x: cx, y: cy, w: 14, h: 14, vx: dx / tt, vy: dy / tt - 0.5 * GRAV * tt, life: 2.4, spin: Math.random() * 6 });
     }
-    boss.grin = 0.6;
+    d.grin = 0.6;
   } else if (kind === "minions") {
-    clearBossMinions();
-    const n = BOSS_MINION_N[bossPhase()];
+    clearBossMinions(d);
+    const ph = bossPhaseOf(d);
+    const n = Math.max(1, Math.min(BOSS_MINION_N[ph], d.minionKind === "both" ? BOSS_MINION_N[ph] : Math.max(1, BOSS_MINION_N[ph] - 1)));
     const sp = (level && level.diff && level.diff.enemySpeed) || 1;
-    const minX = boss.arenaL + 8, maxX = boss.x - 8;
+    const minX = d.arenaL + 8, maxX = d.x - 8;
     for (let i = 0; i < n; i++) {
-      const hop = i % 2 === 1; // alternate Mini Oni walker / Mochi Slime hopper
-      const mxTile = (boss.arenaL + 40 + i * 70) / TILE;
-      const e = enemyOnPlat(hop ? "hopper" : "walker", mxTile, GROUND_Y, hop ? 26 : 28, hop ? 26 : 28, {
-        vx: (hop ? 40 : 55 + bossPhase() * 10) * sp,
+      let hop = d.minionKind === "hopper" ? true : d.minionKind === "walker" ? false : (i % 2 === 1);
+      const mxTile = (d.arenaL + 40 + i * 70) / TILE;
+      const e = enemyOnPlat(hop ? "hopper" : "walker", mxTile, floorY, hop ? 26 : 28, hop ? 26 : 28, {
+        vx: (hop ? 40 : 55 + ph * 10) * sp,
         dir: Math.random() < 0.5 ? -1 : 1,
         minX, maxX,
         hopT: hop ? Math.random() * 0.4 : 0,
-        hopEvery: hop ? (0.95 - bossPhase() * 0.08) / sp : 1.1,
-        bossMinion: true,
+        hopEvery: hop ? (0.95 - ph * 0.08) / sp : 1.1,
+        bossMinion: true, bossOwner: d,
       });
-      // Clamp into the arena walk band
-      e.x = Math.max(minX, Math.min(maxX - e.w, e.x));
+      e.x = Math.max(minX, Math.min(Math.max(minX, maxX - e.w), e.x));
       e.prevX = e.x; e.prevY = e.y;
       enemies.push(e);
-      boss.minions.push(e);
+      d.minions.push(e);
     }
-    boss.grin = 0.5;
+    d.grin = 0.5;
   }
 }
 
-function clearBossMinions() {
-  if (!boss) return;
-  for (const m of boss.minions) { m.alive = false; m.squishT = 99; }
-  boss.minions = [];
-  // Drop spent boss-minion corpses from the shared enemies list
+function clearBossMinions(d) {
+  if (!d) return;
+  for (const m of d.minions) { m.alive = false; m.squishT = 99; }
+  d.minions = [];
+  enemies = enemies.filter(e => e.bossOwner !== d);
+}
+function clearAllBossMinions() {
+  for (const d of bossList()) clearBossMinions(d);
   enemies = enemies.filter(e => !e.bossMinion);
 }
 
-function beginBossVulnerable() {
-  clearBossMinions();
-  boss.mode = "vulnerable"; boss.modeT = 0;
-  boss.beam = null;
-  boss.flash = BOSS_VULN[bossPhase()];
+function beginBossVulnerable(d) {
+  d = d || (boss && !boss.dual ? boss : null);
+  if (!d || d.dual) return;
+  clearBossMinions(d);
+  d.mode = "vulnerable"; d.modeT = 0;
+  d.beam = null;
+  d.flash = BOSS_VULN[bossPhaseOf(d)];
   addCallout("OUT OF ORDER!", "#ffe66d");
 }
 
-function hitBoss() {
-  if (!boss || boss.mode !== "vulnerable") return false;
-  boss.hp--; boss.phase++;
-  boss.shake = 0.7;
+function hitBossDemon(d) {
+  if (!d || d.mode !== "vulnerable") return false;
+  d.hp--; d.phase++;
+  d.shake = 0.7;
   player.vy = STOMP_V_HELD; player.fromStomp = true; player.stompGrace = 0.4;
   player.onGround = false; player.jumpBuf = 0;
-  // Nudge off the crank so we don't re-land on the cabinet
-  player.vx = (player.x + player.w / 2 < boss.x + boss.w / 2 ? -1 : 1) * 180;
+  player.vx = (player.x + player.w / 2 < d.x + d.w / 2 ? -1 : 1) * 180;
   sfx.stomp();
-  spawnParticles(boss.x + boss.w / 2, boss.y + boss.h / 2, "#5ef0ff", 18);
-  spawnParticles(boss.x + boss.w / 2, boss.y + 40, "#ffffff", 12);
-  clearBossMinions();
-  boss.coins = []; boss.beam = null;
-  if (boss.hp <= 0) beginBossDefeat();
+  spawnParticles(d.x + d.w / 2, d.y + d.h / 2, "#5ef0ff", 18);
+  spawnParticles(d.x + d.w / 2, d.y + 40, "#ffffff", 12);
+  clearBossMinions(d);
+  d.coins = []; d.beam = null;
+  if (d.hp <= 0) beginBossDefeat(d);
   else {
-    // Stunned recovery: no contact damage / no attacks; cyan-white flash, then idle telegraph
-    boss.mode = "stunned"; boss.modeT = 0; boss.flash = BOSS_HIT_STUN; boss.grin = 0;
-    addCallout("Gacha jammed! ×" + (BOSS_HP - boss.hp), "#5ef0ff");
+    d.mode = "stunned"; d.modeT = 0; d.flash = BOSS_HIT_STUN; d.grin = 0;
+    addCallout("Gacha jammed! ×" + (d.maxHp - d.hp), "#5ef0ff");
   }
   return true;
 }
+function hitBoss() {
+  if (!boss || boss.dual) return false;
+  return hitBossDemon(boss);
+}
 
-function beginBossDefeat() {
-  boss.mode = "defeat"; boss.modeT = 0; boss.defeated = true;
-  boss.shake = 2.2; boss.beam = null; boss.coins = [];
-  boss.domeBroken = true;
-  for (const c of boss.caps) {
+function beginBossDefeat(d) {
+  d = d || (boss && !boss.dual ? boss : null);
+  if (!d || d.dual) return;
+  d.mode = "defeat"; d.modeT = 0; d.defeated = true;
+  d.shake = 2.2; d.beam = null; d.coins = [];
+  d.domeBroken = true;
+  for (const c of d.caps) {
     c.falling = true;
-    c.wx = boss.x + boss.w / 2 + Math.cos(c.a) * c.r;
-    c.wy = boss.y + 50 + Math.sin(c.a * 0.9) * (c.r * 0.55);
+    c.wx = d.x + d.w / 2 + Math.cos(c.a) * c.r;
+    c.wy = d.y + 50 + Math.sin(c.a * 0.9) * (c.r * 0.55);
     c.vx = (Math.random() - 0.5) * 420;
     c.vy = -220 - Math.random() * 320;
     c.spin = (Math.random() - 0.5) * 10;
   }
-  clearBossMinions();
+  clearBossMinions(d);
   for (let i = 0; i < 28; i++) {
-    spawnParticles(boss.x + 20 + Math.random() * 90, boss.y + 30 + Math.random() * 80,
+    spawnParticles(d.x + 20 + Math.random() * 90, d.y + 30 + Math.random() * 80,
       ["#ff6ab0", "#7ec8ff", "#ffe66d", "#fff", "#b48cff"][i % 5], 1);
   }
-  addCallout("GACHA DEMON DOWN!", "#ffe66d");
+  addCallout(boss && boss.dual ? "DEMON DOWN!" : "GACHA DEMON DOWN!", "#ffe66d");
   sfx.win();
 }
 
-function finishBossDefeat() {
-  // Burst the dome; award a guaranteed Rare-or-better pull, then unlock the goal
-  for (let i = 0; i < 20; i++) spawnParticles(boss.x + 20 + Math.random() * 90, boss.y + 20 + Math.random() * 60, ["#ff6ab0", "#7ec8ff", "#ffe66d", "#b48cff"][i % 4], 1);
-  boss.mode = "done"; boss.rewardPending = true;
-  const reward = rollRareOrBetter();
-  if (reward) {
-    if (slot) slotQueue++;
-    else beginSlotRoll(reward);
+function finishBossDefeat(d) {
+  d = d || (boss && !boss.dual ? boss : null);
+  if (!d || d.dual) return;
+  for (let i = 0; i < 20; i++) spawnParticles(d.x + 20 + Math.random() * 90, d.y + 20 + Math.random() * 60, ["#ff6ab0", "#7ec8ff", "#ffe66d", "#b48cff"][i % 4], 1);
+  d.mode = "done"; d.rewardPending = true;
+
+  const allDown = bossList().every(x => x.defeated || x.mode === "done");
+  if (!allDown) return;
+
+  if (boss && boss.dual) { boss.defeated = true; boss.rewardPending = true; }
+
+  // Reward: Rare+ for main/dual; normal pull for mini
+  const rare = d.rareReward || (boss && boss.dual);
+  if (rare) {
+    const reward = rollRareOrBetter();
+    if (reward) { if (slot) slotQueue++; else beginSlotRoll(reward); }
+    else addCallout("All babes maxed out!", "#ffe66d");
   } else {
-    addCallout("All babes maxed out!", "#ffe66d");
+    if (pullableBabes().length) { if (slot) slotQueue++; else beginSlotRoll(); }
+    else addCallout("All babes maxed out!", "#ffe66d");
   }
   goal.active = true;
 }
 
-function updateBoss(dt) {
-  if (!boss) return;
-  boss.t += dt;
-  if (boss.shake > 0) boss.shake -= dt;
-  if (boss.grin > 0) boss.grin -= dt;
-  if (boss.flash > 0) boss.flash -= dt;
-  for (const c of boss.caps) {
+function updateOneDemon(d, dt, arena) {
+  d.t += dt;
+  if (d.shake > 0) d.shake -= dt;
+  if (d.grin > 0) d.grin -= dt;
+  if (d.flash > 0) d.flash -= dt;
+  for (const c of d.caps) {
     if (c.falling) {
       c.vy += GRAV * 0.85 * dt; c.wx += c.vx * dt; c.wy += c.vy * dt; c.spin = (c.spin || 0) + dt * 8;
       c.vx *= (1 - 0.4 * dt);
     } else { c.a += c.sp * dt; c.bob += dt * 3; }
   }
-
-  // Lock when the player crosses the arena entrance
-  if (!boss.locked && !boss.defeated && player.x + player.w / 2 >= boss.arenaL + 8) lockBossArena();
-  if (!boss.locked) return;
-
-  // Camera lock to the arena
-  const camMin = boss.arenaL, camMax = Math.max(camMin, boss.arenaR - W);
-  cameraX = Math.max(camMin, Math.min(camMax, cameraX));
-
-  // Soft clamp the player inside the walls (walls are solid too)
-  if (player.x < boss.arenaL) { player.x = boss.arenaL; if (player.vx < 0) player.vx = 0; }
-
-  // Projectiles
-  for (let i = boss.coins.length - 1; i >= 0; i--) {
-    const c = boss.coins[i];
-    c.vy += GRAV * dt; c.x += c.vx * dt; c.y += c.vy * dt; c.life -= dt; c.spin += dt * 8;
-    if (c.life <= 0 || c.y > (LEVEL_H + 2) * TILE) { boss.coins.splice(i, 1); continue; }
-    if (aabb(player, c) && invuln <= 0) { hurtPlayer(c.x); boss.coins.splice(i, 1); }
+  if (d.defeated || d.mode === "done") {
+    if (d.mode === "defeat") { d.modeT += dt; if (d.modeT >= 1.6) finishBossDefeat(d); }
+    return;
   }
 
-  // Boss minions live in `enemies` (walker/hopper AI + stomp rules). Keep the ref list tidy.
-  boss.minions = boss.minions.filter(m => m.alive || (m.squishT != null && m.squishT < ENEMY_SQUISH_SHOW));
+  for (let i = d.coins.length - 1; i >= 0; i--) {
+    const c = d.coins[i];
+    c.vy += GRAV * dt; c.x += c.vx * dt; c.y += c.vy * dt; c.life -= dt; c.spin += dt * 8;
+    if (c.life <= 0 || c.y > (LEVEL_H + 2) * TILE) { d.coins.splice(i, 1); continue; }
+    if (aabb(player, c) && invuln <= 0) { hurtPlayer(c.x); d.coins.splice(i, 1); }
+  }
+  d.minions = d.minions.filter(m => m.alive || (m.squishT != null && m.squishT < ENEMY_SQUISH_SHOW));
 
-  // Beam
-  if (boss.beam) {
-    const b = boss.beam;
+  if (d.beam) {
+    const b = d.beam;
     if (b.warn > 0) { b.warn -= dt; if (b.warn <= 0) { b.active = true; b.fire = b.fireDur != null ? b.fireDur : BOSS_BEAM_FIRE; } }
     else if (b.fire > 0) {
       b.fire -= dt;
-      // Hurt if overlapping the beam strip (full arena width, 14 px tall)
-      const strip = { x: boss.arenaL, y: b.y, w: boss.arenaR - boss.arenaL, h: 14 };
+      const strip = { x: arena.arenaL, y: b.y, w: arena.arenaR - arena.arenaL, h: 14 };
       if (aabb(player, strip)) hurtPlayer(player.x + player.w / 2);
-      if (b.fire <= 0) boss.beam = null;
+      if (b.fire <= 0) d.beam = null;
     }
   }
 
-  // Weak-point stomp while vulnerable
-  if (boss.mode === "vulnerable") {
-    const crank = bossCrankRect();
+  if (d.mode === "vulnerable") {
+    const crank = bossCrankRect(d);
     if (aabb(player, crank)) {
       const prevPB = (player.prevY != null ? player.prevY : player.y) + player.h;
-      if (prevPB <= crank.y + 10 && player.vy >= 0) hitBoss();
+      if (prevPB <= crank.y + 10 && player.vy >= 0) hitBossDemon(d);
     }
-  } else if (boss.mode !== "defeat" && boss.mode !== "done" && boss.mode !== "stunned") {
-    // Body contact hurts (not stomping the body — only the crank is a weak point)
-    if (aabb(player, boss) && invuln <= 0 && player.stompGrace <= 0) hurtPlayer(boss.x + boss.w / 2);
+  } else if (d.mode !== "defeat" && d.mode !== "done" && d.mode !== "stunned") {
+    if (aabb(player, d) && invuln <= 0 && player.stompGrace <= 0) hurtPlayer(d.x + d.w / 2);
   }
 
-  // State machine
-  boss.modeT += dt;
-  const ph = bossPhase();
-  if (boss.mode === "idle") {
-    if (boss.modeT >= (boss.nextAtk || BOSS_IDLE[ph])) beginBossAttack(pickBossAttack());
-  } else if (boss.mode === "beam") {
-    if (!boss.beam) beginBossVulnerable();
-  } else if (boss.mode === "coins") {
-    if (boss.coins.length === 0 && boss.modeT > 0.5) beginBossVulnerable();
-  } else if (boss.mode === "minions") {
-    // Clear all minions for an early yellow; timer always fires regardless of minions
-    const allDead = boss.minions.length === 0 || boss.minions.every(m => !m.alive);
-    if ((allDead && boss.modeT > 0.6) || boss.modeT >= BOSS_MINION_VULN_FAILSAFE) beginBossVulnerable();
-  } else if (boss.mode === "stunned") {
-    if (boss.modeT >= BOSS_HIT_STUN) { boss.mode = "idle"; boss.modeT = 0; boss.nextAtk = 0.6; boss.flash = 0; }
-  } else if (boss.mode === "vulnerable") {
-    if (boss.modeT >= BOSS_VULN[ph]) { boss.mode = "idle"; boss.modeT = 0; boss.nextAtk = 0.3; }
-  } else if (boss.mode === "defeat") {
-    if (boss.modeT >= 1.6) finishBossDefeat();
-  } else if (boss.mode === "done") {
-    // Wait for the reward roll to finish, then let the player reach the unlocked goal
+  d.modeT += dt;
+  const ph = bossPhaseOf(d);
+  if (d.mode === "idle") {
+    if (d.modeT >= (d.nextAtk || BOSS_IDLE[Math.min(2, ph)])) beginBossAttack(pickBossAttack(d), d);
+  } else if (d.mode === "beam") {
+    if (!d.beam) beginBossVulnerable(d);
+  } else if (d.mode === "coins") {
+    if (d.coins.length === 0 && d.modeT > 0.5) beginBossVulnerable(d);
+  } else if (d.mode === "minions") {
+    const allDead = d.minions.length === 0 || d.minions.every(m => !m.alive);
+    if ((allDead && d.modeT > 0.6) || d.modeT >= d.failsafe) beginBossVulnerable(d);
+  } else if (d.mode === "stunned") {
+    if (d.modeT >= BOSS_HIT_STUN) { d.mode = "idle"; d.modeT = 0; d.nextAtk = 0.6; d.flash = 0; }
+  } else if (d.mode === "vulnerable") {
+    if (d.modeT >= BOSS_VULN[Math.min(2, ph)]) { d.mode = "idle"; d.modeT = 0; d.nextAtk = 0.3; }
+  } else if (d.mode === "defeat") {
+    if (d.modeT >= 1.6) finishBossDefeat(d);
   }
+}
+
+function updateBoss(dt) {
+  if (!boss) return;
+  const arena = boss.dual ? boss : boss;
+  // Lock
+  if (!arena.locked && !arena.defeated) {
+    if (level && level.bossLockImmediate) lockBossArena();
+    else if (player.x + player.w / 2 >= arena.arenaL + 8) lockBossArena();
+  }
+  if (!arena.locked) return;
+
+  const camMin = arena.arenaL, camMax = Math.max(camMin, arena.arenaR - W);
+  cameraX = Math.max(camMin, Math.min(camMax, cameraX));
+  if (player.x < arena.arenaL) { player.x = arena.arenaL; if (player.vx < 0) player.vx = 0; }
+  if (player.x + player.w > arena.arenaR) { player.x = arena.arenaR - player.w; if (player.vx > 0) player.vx = 0; }
+
+  for (const d of bossList()) updateOneDemon(d, dt, arena);
 }
 
 function drawBoss() {
   if (!boss) return;
+  for (const d of bossList()) drawOneDemon(d);
+}
+
+function drawOneDemon(boss) {
+  if (!boss || boss.dual) return;
   const sk = boss.shake > 0 ? (Math.random() - 0.5) * 10 * Math.min(1, boss.shake) : 0;
   const bx = Math.round(boss.x + sk), by = Math.round(boss.y + sk * 0.4);
   // Body cabinet
@@ -393,7 +479,7 @@ function drawBoss() {
   roundRect(bx - 6, by + 130, 18, 40, 6); ctx.fill();
   roundRect(bx + boss.w - 12, by + 130, 18, 40, 6); ctx.fill();
   // Crank / weak point
-  const cr = bossCrankRect();
+  const cr = bossCrankRect(boss);
   const vuln = boss.mode === "vulnerable";
   const stun = boss.mode === "stunned";
   ctx.fillStyle = stun ? "#ffffff" : vuln ? "#ffe66d" : "#ff5ec8";
@@ -422,7 +508,7 @@ function drawBoss() {
   // Nameplate
   ctx.fillStyle = "rgba(0,0,0,0.55)"; roundRect(bx + 16, by + boss.h - 36, boss.w - 32, 18, 4); ctx.fill();
   ctx.fillStyle = stun ? "#5ef0ff" : "#ff8ec8"; ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
-  ctx.fillText("GACHA MACHINE DEMON", bx + boss.w / 2, by + boss.h - 23);
+  ctx.fillText(boss.label || "GACHA MACHINE DEMON", bx + boss.w / 2, by + boss.h - 23);
 
   // Beam telegraph / fire
   if (boss.beam) {
@@ -453,18 +539,22 @@ function drawBoss() {
 }
 
 function drawBossHud() {
-  if (!boss || !boss.locked || boss.mode === "done") return;
+  if (!boss) return;
+  const locked = boss.dual ? boss.locked : boss.locked;
+  const done = boss.dual ? boss.defeated : (boss.mode === "done");
+  if (!locked || done) return;
   const bw = 320, bh = 18, bx = W / 2 - bw / 2, by = 42;
   ctx.fillStyle = "rgba(0,0,0,0.55)"; roundRect(bx - 4, by - 16, bw + 8, bh + 22, 8); ctx.fill();
   ctx.fillStyle = "#ff8ec8"; ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
-  ctx.fillText("GACHA DEMON", W / 2, by - 3);
+  const title = boss.dual ? "DUAL GACHA DEMONS" : (boss.label || "GACHA DEMON");
+  ctx.fillText(title, W / 2, by - 3);
   ctx.fillStyle = "rgba(255,255,255,0.15)"; roundRect(bx, by, bw, bh, 6); ctx.fill();
-  const pct = Math.max(0, boss.hp / boss.maxHp);
+  const hp = boss.dual ? boss.hp : boss.hp;
+  const maxHp = boss.dual ? boss.maxHp : boss.maxHp;
+  const pct = Math.max(0, hp / maxHp);
   const hg = ctx.createLinearGradient(bx, by, bx + bw, by);
   hg.addColorStop(0, "#ff4ad2"); hg.addColorStop(1, "#ffe66d");
   ctx.fillStyle = hg; roundRect(bx, by, bw * pct, bh, 6); ctx.fill();
   ctx.strokeStyle = "rgba(255,255,255,0.4)"; ctx.lineWidth = 1;
   roundRect(bx, by, bw, bh, 6); ctx.stroke();
 }
-
-

@@ -50,6 +50,7 @@ function updatePlay(dt) {
   player.vy += GRAV * dt;
   if (player.vy > 900) player.vy = 900;
   resolvePlayer(dt);
+  updateCrackedPlatforms(dt);
 
   // Pit / cliff: one deliberate full wipe — all hearts gone, lose one card, then checkpoint respawn.
   // Guarded by state !== "play" inside onHeartsZero path (state flips to "dead" immediately) so no multi-trigger.
@@ -68,7 +69,8 @@ function updatePlay(dt) {
 
   // checkpoints
   for (let i = checkpointIdx + 1; i < checkpoints.length; i++) {
-    if (player.x + player.w/2 >= checkpoints[i].x) checkpointIdx = i;
+    const c = checkpoints[i];
+    if (player.x + player.w / 2 >= c.x && (!level.vertical || player.y + player.h <= c.y + 8)) checkpointIdx = i;
   }
 
   // coins (bob + collect; multiple hits while rolling are queued)
@@ -180,13 +182,22 @@ function updatePlay(dt) {
   player.anim += dt * (Math.abs(player.vx) > 20 ? 10 : 4);
 
   // camera (boss lock overrides the follow when the arena is sealed)
-  if (!(boss && boss.locked && !boss.defeated)) {
+  const bossLocked = boss && (boss.dual ? boss.locked && !boss.defeated : boss.locked && !boss.defeated);
+  if (!bossLocked) {
     const target = player.x - W * 0.38;
     cameraX += (target - cameraX) * Math.min(1, 6 * dt);
     cameraX = Math.max(0, Math.min(cameraX, LEVEL_W * TILE - W));
   } else {
     const camMin = boss.arenaL, camMax = Math.max(camMin, boss.arenaR - W);
     cameraX = Math.max(camMin, Math.min(camMax, cameraX));
+  }
+  if (level && level.vertical) {
+    const ty = player.y - H * 0.55;
+    cameraY += (ty - cameraY) * Math.min(1, 6 * dt);
+    const maxY = Math.max(0, LEVEL_H * TILE - H);
+    cameraY = Math.max(0, Math.min(maxY, cameraY));
+  } else {
+    cameraY = 0;
   }
 }
 
@@ -334,8 +345,15 @@ function resetAfterDeath() {
   // Respawn coins AND enemies at original positions/state (same as level start)
   coins = makeCoins();
   enemies = makeEnemies();
+  restorePlatforms();
   // Boss fight: reset HP / clear minions & coins; player is already parked at the arena entrance CP
   if (boss) resetBossFight();
+  if (level && level.startMid && boss) {
+    const mid = (boss.arenaL + boss.arenaR) / 2;
+    player.x = mid - player.w / 2;
+    player.y = (level.bossFloorY != null ? level.bossFloorY : GROUND_Y) * TILE - player.h;
+    player.prevX = player.x; player.prevY = player.y;
+  }
 }
 
 function updateParticles(dt) {

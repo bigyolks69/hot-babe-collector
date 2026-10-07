@@ -46,7 +46,8 @@ Open `index.html` (or host the file) on iOS Safari / Android Chrome. Viewport is
 
 - `index.html` — shell (canvas + script tags)
 - `css/game.css` — styles
-- `js/` — game modules (boot, audio, babes, input, cards, level, game, boss, update, ui, main)
+- `js/` — game modules (boot, audio, babes, input, cards, level registry, game, boss, update, ui, main)
+- `js/levels/` — per-level data (`common.js`, `level1.js`…`level6.js`)
 - `art/`, `audio/` — assets
 - `CHANGELOG.md` — how to run, recent changes, workflow notes
 - `README.md` — this file
