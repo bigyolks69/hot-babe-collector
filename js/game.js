@@ -189,6 +189,16 @@ function hardRefreshCache() {
   } catch (e) { /* fall through */ }
   go();
 }
+// Gallery "Go back to level 1": keep babe collection; restart at L1 start with a fresh play timer.
+function goBackToLevel1() {
+  if (resetConfirm) resetConfirm = null;
+  winStats = null;
+  gallery.selected = null;
+  // startLevel(1,{newRun}) → load L1, save progress.level=1, resetLevel(full) reloads babes from storage
+  // (does not wipe), clears run/slot/death, resets play timer, state=play.
+  startLevel(1, { newRun: true });
+  addCallout("Back to level 1 — babes kept", "#9ad0ff");
+}
 function canOpenResetConfirm() {
   return !resetConfirm && state === "collection";
 }

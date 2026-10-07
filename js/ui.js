@@ -529,12 +529,17 @@ function galleryFilteredList() {
 
 function galleryResetBtn() {
   // Top-right of the gallery — reset entry point (P opens gallery; does not reset)
-  return { x: W - 168, y: 12, w: 150, h: 36 };
+  return { x: W - 178, y: 12, w: 160, h: 36 };
 }
 function galleryRefreshCacheBtn() {
   // Directly under Reset collection — same panel for mobile + desktop
   const rb = galleryResetBtn();
   return { x: rb.x, y: rb.y + rb.h + 8, w: rb.w, h: rb.h };
+}
+function galleryBackToL1Btn() {
+  // Under Refresh Cache — same gallery menu (mobile Menu + desktop C/P)
+  const rcb = galleryRefreshCacheBtn();
+  return { x: rcb.x, y: rcb.y + rcb.h + 8, w: rcb.w, h: rcb.h };
 }
 function handleGalleryClick(sx, sy) {
   // Reset-confirm popup buttons (mobile) take priority over the gallery underneath
@@ -554,6 +559,11 @@ function handleGalleryClick(sx, sy) {
   const rcb = galleryRefreshCacheBtn();
   if (sx >= rcb.x && sx <= rcb.x + rcb.w && sy >= rcb.y && sy <= rcb.y + rcb.h) {
     hardRefreshCache();
+    return;
+  }
+  const bl1 = galleryBackToL1Btn();
+  if (sx >= bl1.x && sx <= bl1.x + bl1.w && sy >= bl1.y && sy <= bl1.y + bl1.h) {
+    goBackToLevel1();
     return;
   }
   // Filter tabs
@@ -638,7 +648,7 @@ function drawCollection() {
   ctx.font = "bold 26px sans-serif";
   ctx.textAlign = "center";
   ctx.fillText("Babe Gallery", W / 2, 34);
-  // Reset + Refresh Cache (same gallery panel for mobile Menu + desktop C/P)
+  // Reset + Refresh Cache + Go back to level 1 (same gallery panel for mobile Menu + desktop C/P)
   {
     const rb = galleryResetBtn();
     ctx.fillStyle = "rgba(224,69,127,0.55)";
@@ -655,6 +665,13 @@ function drawCollection() {
     roundRect(rcb.x, rcb.y, rcb.w, rcb.h, 10); ctx.stroke();
     ctx.fillStyle = "#fff"; ctx.font = "bold 14px sans-serif";
     ctx.fillText("Refresh Cache", rcb.x + rcb.w / 2, rcb.y + rcb.h / 2 + 1);
+    const bl1 = galleryBackToL1Btn();
+    ctx.fillStyle = "rgba(60,160,120,0.55)";
+    roundRect(bl1.x, bl1.y, bl1.w, bl1.h, 10); ctx.fill();
+    ctx.strokeStyle = "#9aefc4"; ctx.lineWidth = 1.5;
+    roundRect(bl1.x, bl1.y, bl1.w, bl1.h, 10); ctx.stroke();
+    ctx.fillStyle = "#fff"; ctx.font = "bold 13px sans-serif";
+    ctx.fillText("Go back to level 1", bl1.x + bl1.w / 2, bl1.y + bl1.h / 2 + 1);
     ctx.textBaseline = "alphabetic"; ctx.textAlign = "center";
   }
   ctx.font = "bold 14px sans-serif";
