@@ -323,7 +323,7 @@ const AURA_FRAMES = [];
 for (let i = 0; i < 6; i++) {
   const im = new Image();
   im.onerror = () => console.warn("[HBC] aura frame failed: aura_fire_" + i);
-  im.src = "art/vfx/aura/aura_fire_" + i + ".png";
+  im.src = "art/vfx/aura/aura_fire_" + i + ".png?v=2";
   AURA_FRAMES.push(im);
 }
 function hasAllBabesAura() {
@@ -919,6 +919,7 @@ function handleCanvasTap(sx, sy) {
   if (resetConfirm) return; // Reset/Cancel handled by the capture listener
   if (congrats) return; // only its Continue button closes it (handled in the pointerdown listener)
   if (performance.now() - congratsClosedAt < 300) return; // the dismissing tap does nothing else
+  if (tryTrayOpenCollection(sx, sy)) return;
   if (state === "title") {
     if (!heroSprites.ready && !heroSprites.failed) return;
     startLevel(progress.level);
@@ -981,6 +982,7 @@ canvas.addEventListener("mousedown", e => {
   if (e.button !== 0) return;
   const { x, y } = canvasCoords(e.clientX, e.clientY);
   if (state === "collection") handleGalleryClick(x, y);
+  else if (tryTrayOpenCollection(x, y)) { ensureAudio(); }
   else if (state === "title" || state === "win") handleCanvasTap(x, y);
 });
 
@@ -1924,6 +1926,20 @@ let winStats = null;
 let runGained = [];   // babe ids gained this run (for win screen)
 let collectionReturn = "play";
 function openCollection() { collectionReturn = state === "win" ? "win" : "play"; state = "collection"; }
+let hudTrayHit = null; // {x,y,w,h} canvas-space panel from last drawHudLiveBabes
+function trayContains(sx, sy) {
+  const r = hudTrayHit;
+  return !!(r && sx >= r.x && sx <= r.x + r.w && sy >= r.y && sy <= r.y + r.h);
+}
+/** Click/tap the babe tray → same as C (open gallery). Ignores blocking overlays; only in play. */
+function tryTrayOpenCollection(sx, sy) {
+  if (resetConfirm || congrats) return false;
+  if (performance.now() - congratsClosedAt < 300) return false;
+  if (state !== "play") return false; // match C; death Ouch / win ignore tray
+  if (!trayContains(sx, sy)) return false;
+  openCollection();
+  return true;
+}
 let gallery = {
   filter: "all", // all | owned | missing | common | rare | ultra
   scroll: 0,
@@ -3399,7 +3415,7 @@ function drawWorld() {
 
 // Bottom-right mini tray: only owned babes, newest acquisition on the right, at most 5.
 function drawHudLiveBabes() {
-  if (state !== "play" && state !== "dead" && state !== "dying") return;
+  if (state !== "play" && state !== "dead" && state !== "dying") { hudTrayHit = null; return; }
   const lostId = state === "dead" && loseAnim ? loseAnim.lostId : null;
   // newest-first, owned (keep a just-lost babe visible during the Ouch screen for her X)
   const recent = recentBabes.filter(id => (collection[id] || 0) > 0 || id === lostId).slice(0, HUD_SLOTS);
@@ -3420,6 +3436,7 @@ function drawHudLiveBabes() {
   const panelX = W - panelW - margin;
   const panelY = H - panelH - lift - (n ? 0 : ch + pad);
   const step = cw + gap;
+  hudTrayHit = { x: panelX, y: panelY, w: panelW, h: panelH };
 
   ctx.save();
   ctx.globalAlpha = 0.78;
@@ -4662,6 +4679,7 @@ window.__HBC = {
   getBabePool: () => BABE_POOL,
   getRunGained: () => runGained,
   getHudTray: () => hudTray,
+  getHudTrayHit: () => hudTrayHit && { ...hudTrayHit },
   focusHudOnBabe: (id) => focusHudOnBabe(id),
 };
 </script>
