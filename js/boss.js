@@ -57,9 +57,9 @@ function makeBoss() {
   const floorY = level.bossFloorY != null ? level.bossFloorY : GROUND_Y;
 
   if (kind === "dual") {
-    // Full arena; left inset from left wall, right cleared of mobile tray
+    // Full arena; left matches right edge pad so crank-side jump isn't wall-cramped
     const left = createDemon({
-      x: arenaL + 56, arenaL, arenaR, floorY,
+      x: arenaL + BOSS_EDGE_PAD, arenaL, arenaR, floorY,
       hp: BOSS_HP, rareReward: false, label: "GACHA DEMON L",
     });
     const right = createDemon({

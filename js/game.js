@@ -251,6 +251,27 @@ let invuln = 0;
 let checkpointIdx = 0;
 let cameraX = 0;
 let cameraY = 0;
+
+// Vertical camera: follow player, but L5 mini-boss sits partly above y=0.
+// During the top-deck fight, bias so demon body + jump arc sit under the HUD
+// (cameraY may go negative). Returns { ty, camMin }.
+function verticalCamTarget() {
+  let ty = player.y - H * 0.55;
+  let camMin = 0;
+  const d = boss && !boss.dual && !boss.defeated && boss.mode !== "done" ? boss : null;
+  const nearPad = d && level && level.bossFloorY != null && player.y < (level.bossFloorY + 4) * TILE;
+  if (d && (d.locked || nearPad)) {
+    const hudClear = 118; // hearts + HP bar + one callout clear of dome
+    const top = d.y - 24; // small pad above dome
+    ty = top - hudClear;
+    // Keep player in the lower ~70% if they drop below the pad
+    const keepPlayer = player.y - H * 0.72;
+    if (ty < keepPlayer) ty = keepPlayer;
+    if (player.y - ty < hudClear) ty = player.y - hudClear;
+    camMin = Math.min(0, top - hudClear - 8);
+  }
+  return { ty, camMin };
+}
 let coins = [];
 let enemies = [];
 let particles = [];
@@ -400,7 +421,13 @@ function resetLevel(full) {
   player.coyote = 0; player.jumpBuf = 0; player.stun = 0; player.stompGrace = 0; player.fromStomp = false;
   player.prevX = player.x; player.prevY = player.y;
   cameraX = Math.max(0, Math.min(player.x - W*0.35, LEVEL_W * TILE - W));
-  cameraY = level && level.vertical ? Math.max(0, player.y - H * 0.55) : 0;
+  if (level && level.vertical) {
+    const vc = verticalCamTarget();
+    const maxY = Math.max(0, LEVEL_H * TILE - H);
+    cameraY = Math.max(vc.camMin, Math.min(maxY, vc.ty));
+  } else {
+    cameraY = 0;
+  }
 }
 
 // Floating 1-tile ledges are one-way: walk/jump through from below/side, land from above.
@@ -651,7 +678,10 @@ const CALLOUT_H = 36, CALLOUT_GAP = 6;
 // Callouts sit where the roll panel was; if a (queued) roll is on screen they
 // slide just below the panel so the next roll never hides them.
 function calloutBaseY() {
-  return slot ? SLOT_PANEL_Y + SLOT_PANEL_H + 8 : 56;
+  if (slot) return SLOT_PANEL_Y + SLOT_PANEL_H + 8;
+  // Vertical mini-boss: sit callouts in the HUD band above the framed fight
+  if (boss && !boss.dual && boss.locked && level && level.vertical) return 68;
+  return 56;
 }
 function addCallout(text, color) {
   callouts.push({ text, color, t: 0, dur: CALLOUT_IN + CALLOUT_HOLD + CALLOUT_OUT, y: null });

@@ -192,10 +192,10 @@ function updatePlay(dt) {
     cameraX = Math.max(camMin, Math.min(camMax, cameraX));
   }
   if (level && level.vertical) {
-    const ty = player.y - H * 0.55;
-    cameraY += (ty - cameraY) * Math.min(1, 6 * dt);
+    const vc = verticalCamTarget();
+    cameraY += (vc.ty - cameraY) * Math.min(1, 6 * dt);
     const maxY = Math.max(0, LEVEL_H * TILE - H);
-    cameraY = Math.max(0, Math.min(maxY, cameraY));
+    cameraY = Math.max(vc.camMin, Math.min(maxY, cameraY));
   } else {
     cameraY = 0;
   }

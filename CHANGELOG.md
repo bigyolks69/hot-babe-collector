@@ -29,6 +29,9 @@ Script load order (do not reorder): boot → audio → babes → input → cards
 
 ## Recent changes
 
+- **L5 mini-boss camera:** vertical follow may go above y=0 and frames the demon body + jump arc under the HUD (boss was at y≈−99, mostly off-screen).
+- **L6 left demon spacing:** left spawn inset `56` → `BOSS_EDGE_PAD` (220), matching right-side breathing room for crank jumps.
+
 - **Checkpoints:** horizontal levels use start + 1/3 + 2/3 only (no per-section flag spam).
 - **Levels 4–6:** Neon Overpass (cracked plats, denser/faster foes, flyers), Capsule Yard (vertical climb + 2 HP mini demon), Dual Demon Arena (two 3 HP demons, Rare+ when both down). HUD `LEVEL x / 6`.
 - **Cracked platforms:** stand ~0.6s → shake → fall; restore on death/respawn. Required path stays mostly solid.
