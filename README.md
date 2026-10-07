@@ -2,7 +2,9 @@
 
 **Big Salty Gaming Studio** — prototype side-scrolling platformer.
 
-Single-file game: open `index.html` in Chrome or Safari (double-click works offline). No network or CDN required.
+Open `index.html` in Chrome or Safari (double-click / `file://` works offline), or use GitHub Pages: https://bigyolks69.github.io/hot-babe-collector/
+
+No build step or CDN. Scripts load as classic globals (see `CHANGELOG.md` for layout). Edit the relevant `js/*.js` file — not one mega HTML.
 
 ## Controls
 
@@ -32,7 +34,7 @@ Open `index.html` (or host the file) on iOS Safari / Android Chrome. Viewport is
 - **Collectibles**: **6** babe-coins in the level (sparse). Coins **and enemies** respawn on death.
 - **Coins → babes**: ~1.2s slot roll overlay (gameplay continues); queued pickups; pre-planted result (no snap).
 - **Hearts**: 3 HP. Hit = knockback (~290 px/s away, vy −280) + 0.25s stun + invuln flash. Stomp from above = bounce (STOMP_V ≈ −339 / held ≈ −438; half prior apex height) + brief grace. Enemies gravity-snap to platforms and turn at ledges; respawn with coins on death.
-- **Flyer (Level 2 only) — art is FINAL**: the 13×10 pixel bat-drone drawn in code (`FLYER_FRAMES` + `drawFlyer` in `index.html`, violet body / cyan eyes, 2-frame flap, red eyes + shake during the swoop warning) is the approved final look, not a placeholder. Do not replace or restyle it, and do not add any drop/ground shadow or ellipse under it (removed on purpose).
+- **Flyer (Level 2 only) — art is FINAL**: the 13×10 pixel bat-drone drawn in code (`FLYER_FRAMES` + `drawFlyer` in `js/game.js` / related draw helpers, violet body / cyan eyes, 2-frame flap, red eyes + shake during the swoop warning) is the approved final look, not a placeholder. Do not replace or restyle it, and do not add any drop/ground shadow or ellipse under it (removed on purpose).
 - **Death**: gallery-style scrolled grid (rarity→name) with the lost babe crossed by a pen-stroke red X; owned count in header. Pit = full wipe + lose one babe.
 - **Win**: babes gained this run (scrollable row) + totals.
 - **Save**: `hbc_collection_v1` counts map; also writes `hbc_collection_v2` wrapper (v1 still loaded/migrated).
@@ -42,5 +44,9 @@ Open `index.html` (or host the file) on iOS Safari / Android Chrome. Viewport is
 
 ## Files
 
-- `index.html` — the whole game
+- `index.html` — shell (canvas + script tags)
+- `css/game.css` — styles
+- `js/` — game modules (boot, audio, babes, input, cards, level, game, boss, update, ui, main)
+- `art/`, `audio/` — assets
+- `CHANGELOG.md` — how to run, recent changes, workflow notes
 - `README.md` — this file
