@@ -55,17 +55,19 @@ function canvasCoords(clientX, clientY) {
 }
 
 // Start (or restart) a level from its first checkpoint and remember it as the current level
-function startLevel(n) {
+function startLevel(n, opts) {
   loadLevel(n);
   progress.level = levelNum;
   saveProgress(progress);
   resetLevel(true);
+  // newRun: title start / play-again from L1 after beating the game
+  if (opts && opts.newRun) resetPlayTimer();
   state = "play";
 }
 // Win panel primary action: Level 1 → continue to Level 2; last level → back to Level 1
 function winContinue() {
-  if (winStats && !winStats.final) startLevel(levelNum + 1);
-  else startLevel(1);
+  if (winStats && !winStats.final) startLevel(levelNum + 1); // keep cumulative timer
+  else startLevel(1, { newRun: true });
 }
 
 function handleCanvasTap(sx, sy) {
@@ -76,7 +78,7 @@ function handleCanvasTap(sx, sy) {
   if (tryTrayOpenCollection(sx, sy)) return;
   if (state === "title") {
     if (!heroSprites.ready && !heroSprites.failed) return;
-    startLevel(progress.level);
+    startLevel(progress.level, { newRun: true });
     return;
   }
   if (state === "win") {

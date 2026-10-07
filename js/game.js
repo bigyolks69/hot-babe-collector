@@ -18,6 +18,18 @@ const COYOTE = 0.1;
 const JUMP_BUF = 0.12;
 
 let state = "title"; // title | play | collection | dying | dead | win
+
+// Cumulative play timer (ms). Runs only in state==="play"; pauses in menu / win / death / overlays.
+// Resets on title start and on a fresh post-credits L1 run — not on level continue, replay, or CP respawn.
+let playTimerMs = 0;
+function resetPlayTimer() { playTimerMs = 0; }
+function tickPlayTimer(dt) { if (dt > 0) playTimerMs += dt * 1000; }
+function formatPlayTime(ms) {
+  const s = Math.max(0, Math.floor((ms || 0) / 1000));
+  const m = Math.floor(s / 60);
+  const ss = s % 60;
+  return m + ":" + (ss < 10 ? "0" : "") + ss;
+}
 let collection = loadCollection();
 
 // Mini tray: newest-first list of owned babes by latest acquisition (persisted)

@@ -1,6 +1,7 @@
 // Hot Babe Collector — update.js
 // ---------- Update ----------
 function updatePlay(dt) {
+  tickPlayTimer(dt);
   if (player.stun > 0) player.stun -= dt;
   if (player.stompGrace > 0) player.stompGrace -= dt;
 

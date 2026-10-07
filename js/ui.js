@@ -309,6 +309,33 @@ function drawHudLiveBabes() {
   ctx.restore();
 }
 
+
+/** Play-time readout — pixel/city-pop pill matching hearts / tray HUD. */
+function drawPlayTimer(x, y, opts) {
+  const o = opts || {};
+  const label = formatPlayTime(playTimerMs);
+  const big = !!o.big;
+  ctx.save();
+  ctx.font = big ? "bold 18px sans-serif" : "bold 13px sans-serif";
+  const tw = Math.ceil(ctx.measureText(label).width);
+  const padX = big ? 12 : 8, padY = big ? 6 : 4;
+  const bw = tw + padX * 2, bh = big ? 28 : 22;
+  ctx.fillStyle = "rgba(0,0,0,0.45)";
+  roundRect(x, y, bw, bh, big ? 8 : 6);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,230,109,0.55)";
+  ctx.lineWidth = 1.25;
+  roundRect(x, y, bw, bh, big ? 8 : 6);
+  ctx.stroke();
+  ctx.fillStyle = "#ffe66d";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, x + padX, y + bh / 2 + 0.5);
+  ctx.textBaseline = "alphabetic";
+  ctx.restore();
+  return { w: bw, h: bh };
+}
+
 function drawHUD() {
   // hearts
   for (let i = 0; i < 3; i++) {
@@ -322,6 +349,9 @@ function drawHUD() {
     ctx.bezierCurveTo(hx - 12, hy, hx, hy, hx, hy + 6);
     ctx.fill();
   }
+
+  // play timer — top-left under hearts (avoids centre level bar + right collection box)
+  drawPlayTimer(8, 36);
 
   // level number + distance-to-flag bar (top centre)
   {
@@ -599,6 +629,7 @@ function drawCollection() {
   ctx.fillRect(0, 0, W, H);
 
   const unique = ownedUniqueCount(collection);
+  drawPlayTimer(12, 10);
   ctx.fillStyle = "#ff8ec8";
   ctx.font = "bold 26px sans-serif";
   ctx.textAlign = "center";
@@ -1015,6 +1046,12 @@ function drawWin() {
   ctx.fillText(fin ? "All " + LEVELS.length + " levels cleared — Big Salty Gaming Studio thanks you"
                    : "Big Salty Gaming Studio thanks you — Level " + (levelNum + 1) + " awaits", W / 2, 74);
 
+  {
+    const label = formatPlayTime(playTimerMs);
+    ctx.font = "bold 18px sans-serif";
+    const tw = Math.ceil(ctx.measureText(label).width);
+    drawPlayTimer((W - (tw + 24)) / 2, 86, { big: true });
+  }
   if (winStats) {
     ctx.fillStyle = "#fff";
     ctx.font = "14px sans-serif";
@@ -1022,19 +1059,19 @@ function drawWin() {
       "Babe drops " + winStats.coins + "/" + winStats.coinsMax +
       "   ·   Babes " + winStats.unique + "/" + BABE_POOL.length +
       "   ·   Pulls " + winStats.total,
-      W / 2, 102
+      W / 2, 128
     );
   }
 
   ctx.fillStyle = "#ffb0d0";
   ctx.font = "bold 16px sans-serif";
-  ctx.fillText("Babes gained this run", W / 2, 140);
+  ctx.fillText("Babes gained this run", W / 2, 156);
 
   const gained = (winStats && winStats.gained) ? winStats.gained : [];
   if (!gained.length) {
     ctx.fillStyle = "#888";
     ctx.font = "14px sans-serif";
-    ctx.fillText("No babes collected this run — next time!", W / 2, 220);
+    ctx.fillText("No babes collected this run — next time!", W / 2, 236);
   } else {
     const cw = 72, ch = cardHeight(cw), gap = 12;
     const totalW = gained.length * cw + (gained.length - 1) * gap;
@@ -1047,19 +1084,19 @@ function drawWin() {
     const origin = (W - Math.min(totalW, maxW)) / 2 - winStats._gScroll;
     ctx.save();
     ctx.beginPath();
-    ctx.rect(40, 160, W - 80, ch + 40);
+    ctx.rect(40, 176, W - 80, ch + 40);
     ctx.clip();
     for (let i = 0; i < gained.length; i++) {
       const babe = babeById(gained[i]);
       if (!babe) continue;
       const x = origin + i * (cw + gap);
-      drawCard(babe, x, 168, cw, ch, { showRarity: false, max: isMaxed(babe.id) });
+      drawCard(babe, x, 184, cw, ch, { showRarity: false, max: isMaxed(babe.id) });
     }
     ctx.restore();
     if (scrollMax > 0) {
       ctx.fillStyle = "#888";
       ctx.font = "11px sans-serif";
-      ctx.fillText("← → scroll", W / 2, 168 + ch + 28);
+      ctx.fillText("← → scroll", W / 2, 184 + ch + 28);
     }
   }
 
@@ -1210,7 +1247,7 @@ function frameInner(dt) {
   if (state === "title") {
     drawTitle();
     if ((justPressed[" "] || justPressed["enter"]) && (heroSprites.ready || heroSprites.failed)) {
-      startLevel(progress.level);
+      startLevel(progress.level, { newRun: true });
       ensureAudio();
     }
     return;
@@ -1240,7 +1277,7 @@ function frameInner(dt) {
     if (slot) drawSlot();
     drawWin();
     if (justPressed["enter"] || justPressed[" "]) winContinue();
-    else if (justPressed["r"]) startLevel(winStats && winStats.final ? 1 : levelNum); // replay
+    else if (justPressed["r"]) startLevel(winStats && winStats.final ? 1 : levelNum, winStats && winStats.final ? { newRun: true } : null); // replay
     if (justPressed["c"] || justPressed["p"]) openCollection();
     return;
   }
