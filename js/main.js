@@ -78,10 +78,10 @@ window.__HBC = {
     stacks: collectionBuffStacks(), uniques: ownedUniqueCount(collection),
     moveMul: collectionMoveMul(), jumpHeightMul: collectionJumpHeightMul(), jumpVelMul: collectionJumpVelMul(),
     moveMax: moveMaxNow(), jumpV: jumpVNow(),
-    announced: buffAnnouncedStacks, popup: !!buffPopup, pending: buffPending,
+    announced: buffAnnouncedStacks, toast: !!buffToast, pending: buffPending,
+    toastT: buffToast && buffToast.t, toastDur: buffToast && buffToast.dur,
   }),
-  getBuffPopup: () => buffPopup && { t: buffPopup.t, text: BUFF_TEXT },
-  dismissBuffPopup: (force) => dismissBuffPopup(!!force),
+  getBuffToast: () => buffToast && { t: buffToast.t, dur: buffToast.dur, text: BUFF_TEXT },
 
   getAuraFrame: () => Math.floor(performance.now() / AURA_FRAME_MS) % 6,
   getRecent: () => recentBabes.slice(),

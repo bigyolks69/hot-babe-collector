@@ -63,30 +63,21 @@ function checkCollectionComplete() {
 }
 let congratsClosedAt = -1e9;
 
-// Collection buff threshold popup (every +5 unique)
+// Collection buff threshold toast (every +5 unique) — non-blocking, top of screen
 const BUFF_TEXT = "Your collection is growing! It's making you faster and stronger!";
-const BUFF_GUARD = 0.45; // short hold before Continue works
-let buffPopup = null; // { t } while up
+const BUFF_TOAST_IN = 0.2;
+const BUFF_TOAST_OUT = 0.35;
+const BUFF_TOAST_DUR = 2.4; // fade-in + ~2s hold + fade-out
+let buffToast = null; // { t, dur } while visible — does NOT pause gameplay
 let buffAnnouncedStacks = 0; // last tier we announced this session
-let buffPending = false; // wait for congrats / settle
-let buffClosedAt = -1e9;
+let buffPending = false; // wait for congrats to finish, then toast
 function syncBuffAnnouncedFromCollection() {
   buffAnnouncedStacks = collectionBuffStacks();
 }
-function showBuffPopup() {
-  if (buffPopup) return;
-  buffPopup = { t: 0 };
+function showBuffToast() {
+  buffToast = { t: 0, dur: BUFF_TOAST_DUR };
   buffPending = false;
   try { sfx.new(); } catch (e) {}
-}
-function dismissBuffPopup(force) {
-  if (!buffPopup || (!force && buffPopup.t < BUFF_GUARD)) return;
-  buffPopup = null;
-  buffClosedAt = performance.now();
-  if (slotQueue > 0 && !congrats && !buffPopup) {
-    slotQueue--;
-    if (!beginSlotRoll()) slotQueue = 0;
-  }
 }
 function syncCollectionBuffAnnounce() {
   const stacks = collectionBuffStacks();
@@ -97,12 +88,41 @@ function syncCollectionBuffAnnounce() {
   if (stacks > buffAnnouncedStacks) {
     buffAnnouncedStacks = stacks;
     if (congrats) buffPending = true;
-    else showBuffPopup();
+    else showBuffToast();
   }
 }
-// Seed from saved collection so refresh does not re-popup current tiers
+// Seed from saved collection so refresh does not re-toast current tiers
 syncBuffAnnouncedFromCollection();
 
+function drawBuffToast() {
+  if (!buffToast) return;
+  const t = buffToast.t, dur = buffToast.dur;
+  let a = 1;
+  if (t < BUFF_TOAST_IN) a = t / BUFF_TOAST_IN;
+  else if (t > dur - BUFF_TOAST_OUT) a = Math.max(0, (dur - t) / BUFF_TOAST_OUT);
+  ctx.save();
+  ctx.globalAlpha = a * 0.95;
+  const pw = Math.min(720, W - 40), ph = 56;
+  const px = (W - pw) / 2, py = 14;
+  ctx.fillStyle = "rgba(18,8,32,0.88)";
+  roundRect(px, py, pw, ph, 12); ctx.fill();
+  ctx.strokeStyle = "rgba(255,230,109,0.75)"; ctx.lineWidth = 2;
+  roundRect(px, py, pw, ph, 12); ctx.stroke();
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#ffe66d";
+  ctx.font = "bold 15px sans-serif";
+  const msg = BUFF_TEXT;
+  const cut = msg.indexOf("! ");
+  if (cut > 0) {
+    ctx.fillText(msg.slice(0, cut + 1), W / 2, py + 22);
+    ctx.fillStyle = "#fff0f8";
+    ctx.font = "bold 14px sans-serif";
+    ctx.fillText(msg.slice(cut + 2), W / 2, py + 42);
+  } else {
+    ctx.fillText(msg, W / 2, py + 34);
+  }
+  ctx.restore();
+}
 
 // Only the Continue button (click / tap) or Enter closes it; `force` is for debug hooks/tests only
 function dismissCongrats(force) {
@@ -111,9 +131,9 @@ function dismissCongrats(force) {
   congratsClosedAt = performance.now();
   const pendingBuff = buffPending;
   buffPending = false;
-  if (pendingBuff) showBuffPopup();
-  // Rolls earned meanwhile resume now (buff popup freezes until Continue)
-  else if (!slot && slotQueue > 0 && !buffPopup) { slotQueue--; if (!beginSlotRoll()) slotQueue = 0; }
+  if (pendingBuff) showBuffToast();
+  // Rolls earned meanwhile resume now
+  if (!slot && slotQueue > 0) { slotQueue--; if (!beginSlotRoll()) slotQueue = 0; }
 }
 // Collection reset: gallery "Reset collection" button → confirm popup (no P key).
 // Wipes babe counts + tray order + complete flag; keeps level progress and mute.
@@ -145,7 +165,7 @@ function confirmResetCollection() {
   saveCollection(collection);
   syncBuffAnnouncedFromCollection();
   buffPending = false;
-  buffPopup = null;
+  buffToast = null;
   recentBabes = [];
   saveRecent();
   collectionCompleteFlag = false;
@@ -235,9 +255,8 @@ function trayContains(sx, sy) {
 }
 /** Click/tap the babe tray → same as C (open gallery). Ignores blocking overlays; only in play. */
 function tryTrayOpenCollection(sx, sy) {
-  if (resetConfirm || congrats || buffPopup) return false;
+  if (resetConfirm || congrats) return false;
   if (performance.now() - congratsClosedAt < 300) return false;
-  if (performance.now() - buffClosedAt < 300) return false;
   if (state !== "play") return false; // match C; death Ouch / win ignore tray
   if (!trayContains(sx, sy)) return false;
   openCollection();
@@ -292,7 +311,7 @@ function resetLevel(full) {
   hearts = 3;
   invuln = 0;
   congrats = null;
-  buffPopup = null;
+  buffToast = null;
   buffPending = false;
   if (level && level.boss) boss = makeBoss();
   else boss = null;
@@ -667,7 +686,7 @@ function finishSlot() {
   if (prev === 0) syncCollectionBuffAnnounce();
   // Chain queued rolls immediately (even over death/win overlays — player earned them);
   // while the celebration is up they wait and resume when it's dismissed
-  if (slotQueue > 0 && !congrats && !buffPopup) {
+  if (slotQueue > 0 && !congrats) {
     slotQueue--;
     // If that was the last babe in the pool, the queued pickups have nothing left to roll
     if (!beginSlotRoll()) slotQueue = 0;

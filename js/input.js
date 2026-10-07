@@ -71,9 +71,8 @@ function winContinue() {
 function handleCanvasTap(sx, sy) {
   ensureAudio();
   if (resetConfirm) return; // Reset/Cancel handled by the capture listener
-  if (congrats || buffPopup) return; // Continue button only (pointerdown listener)
-  if (performance.now() - congratsClosedAt < 300) return;
-  if (performance.now() - buffClosedAt < 300) return;
+  if (congrats) return; // only its Continue button closes it (handled in the pointerdown listener)
+  if (performance.now() - congratsClosedAt < 300) return; // the dismissing tap does nothing else
   if (tryTrayOpenCollection(sx, sy)) return;
   if (state === "title") {
     if (!heroSprites.ready && !heroSprites.failed) return;
@@ -97,12 +96,6 @@ function congratsHit(clientX, clientY) {
   const b = congratsLayout().btn, pad = 10;
   return x >= b.x - pad && x <= b.x + b.w + pad && y >= b.y - pad && y <= b.y + b.h + pad;
 }
-function buffPopupHit(clientX, clientY) {
-  if (!buffPopup) return false;
-  const { x, y } = canvasCoords(clientX, clientY);
-  const b = buffPopupLayout().btn, pad = 10;
-  return x >= b.x - pad && x <= b.x + b.w + pad && y >= b.y - pad && y <= b.y + b.h + pad;
-}
 function congratsBlocks(e) {
   const t = e.target;
   return (congrats || performance.now() - congratsClosedAt < 300) && !(t && t.closest && t.closest("#muteBtn"));
@@ -119,7 +112,7 @@ function resetHit(clientX, clientY) {
 function overlayBlocks(e) {
   const t = e.target;
   if (t && t.closest && t.closest("#muteBtn")) return false;
-  return !!(resetConfirm || congrats || buffPopup || performance.now() - congratsClosedAt < 300 || performance.now() - buffClosedAt < 300);
+  return !!(resetConfirm || congrats || performance.now() - congratsClosedAt < 300);
 }
 window.addEventListener("pointerdown", e => {
   if (!overlayBlocks(e)) return;
@@ -131,7 +124,6 @@ window.addEventListener("pointerdown", e => {
     return;
   }
   if (congrats && congratsHit(e.clientX, e.clientY)) dismissCongrats();
-  else if (buffPopup && buffPopupHit(e.clientX, e.clientY)) dismissBuffPopup();
   e.stopPropagation();
 }, true);
 ["touchstart", "mousedown"].forEach(ev => window.addEventListener(ev, e => {
