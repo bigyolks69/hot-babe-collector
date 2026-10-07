@@ -28,6 +28,8 @@ No build step. Classic `<script>` tags (not ES modules) so offline `file://` kee
 Script load order (do not reorder): boot → audio → babes → input → cards → level → game → boss → update → ui → main.
 
 ## Recent changes
+- **BGM queue until decode (bgmfix3):** Start/unlock only sets `wanted` + resumes context; no start/HTML play before buffer exists (avoids hang). `loadBgm` → `onBgmDecodeComplete` starts if wanted. `startBgm` no-ops until `bgm.ready`. Global unlock kept. Cache `?v=bgmfix3`.
+
 - **BGM global unlock (bgmfix2):** hung `bgmStartLock` when iOS left `actx.resume()` pending outside a gesture (common when Start→L4 before decode finished) blocked every later unlock. Timed resume, abandon stale lock, sync resume+HTML `.play()` inside gesture, HTML twin fallback, `ensureAudio` nudges silent BGM. Works on every refresh/level after first tap/key. Cache `?v=bgmfix2`.
 
 - **BGM silent again (mobile/strict autoplay):** `fetchDecode` awaited `ensureAudio()`→`resume()` during preload; under autoplay that resume can hang forever so the buffer never loads (`wanted=true`, `starts=0`). Decode via `OfflineAudioContext` (no playback resume); add `touchstart` unlock; `startLevel` retries `startBgm`. Play timer unchanged. Cache `?v=bgmfix1`.
