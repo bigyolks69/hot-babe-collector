@@ -81,7 +81,7 @@ window.__HBC = {
     announced: buffAnnouncedStacks, toast: !!buffToast, pending: buffPending,
     toastT: buffToast && buffToast.t, toastDur: buffToast && buffToast.dur,
   }),
-  getBuffToast: () => buffToast && { t: buffToast.t, dur: buffToast.dur, text: BUFF_TEXT },
+  getBuffToast: () => buffToast && { t: buffToast.t, dur: buffToast.dur, text: buffToast.text || buffToastMessage() },
 
   getAuraFrame: () => Math.floor(performance.now() / AURA_FRAME_MS) % 6,
   getRecent: () => recentBabes.slice(),

@@ -74,8 +74,14 @@ let buffPending = false; // wait for congrats to finish, then toast
 function syncBuffAnnouncedFromCollection() {
   buffAnnouncedStacks = collectionBuffStacks();
 }
+function buffToastMessage(stacks) {
+  stacks = stacks == null ? collectionBuffStacks() : stacks;
+  const mv = Math.round(COLL_BUFF_MOVE_PER * stacks * 100);
+  const jh = Math.round(COLL_BUFF_JUMP_H_PER * stacks * 100);
+  return BUFF_TEXT + " (" + mv + "% faster, " + jh + "% higher jump)";
+}
 function showBuffToast() {
-  buffToast = { t: 0, dur: BUFF_TOAST_DUR };
+  buffToast = { t: 0, dur: BUFF_TOAST_DUR, text: buffToastMessage() };
   buffPending = false;
   try { sfx.new(); } catch (e) {}
 }
@@ -101,9 +107,21 @@ function drawBuffToast() {
   let a = 1;
   if (t < BUFF_TOAST_IN) a = t / BUFF_TOAST_IN;
   else if (t > dur - BUFF_TOAST_OUT) a = Math.max(0, (dur - t) / BUFF_TOAST_OUT);
+  const msg = buffToast.text || buffToastMessage();
+  // Two lines: base sentence, then percents (or split at "! " if no stored percents line)
+  const pctIdx = msg.lastIndexOf(" (");
+  let line1, line2;
+  if (pctIdx > 0) {
+    line1 = msg.slice(0, pctIdx);
+    line2 = msg.slice(pctIdx + 1); // includes leading "("
+  } else {
+    const cut = msg.indexOf("! ");
+    line1 = cut > 0 ? msg.slice(0, cut + 1) : msg;
+    line2 = cut > 0 ? msg.slice(cut + 2) : "";
+  }
   ctx.save();
   ctx.globalAlpha = a * 0.92;
-  const pw = Math.min(560, W - 80), ph = 44;
+  const pw = Math.min(620, W - 48), ph = line2 ? 46 : 34;
   const px = (W - pw) / 2, py = 10;
   ctx.fillStyle = "rgba(22,10,36,0.9)";
   roundRect(px, py, pw, ph, 10); ctx.fill();
@@ -112,15 +130,11 @@ function drawBuffToast() {
   ctx.textAlign = "center";
   ctx.fillStyle = "#ffe66d";
   ctx.font = "bold 13px sans-serif";
-  const msg = BUFF_TEXT;
-  const cut = msg.indexOf("! ");
-  if (cut > 0) {
-    ctx.fillText(msg.slice(0, cut + 1), W / 2, py + 17);
-    ctx.fillStyle = "#ffe8f4";
+  ctx.fillText(line1, W / 2, py + (line2 ? 17 : 22));
+  if (line2) {
+    ctx.fillStyle = "#9ad0ff";
     ctx.font = "bold 12px sans-serif";
-    ctx.fillText(msg.slice(cut + 2), W / 2, py + 33);
-  } else {
-    ctx.fillText(msg, W / 2, py + 27);
+    ctx.fillText(line2, W / 2, py + 34);
   }
   ctx.restore();
 }
