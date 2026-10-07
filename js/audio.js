@@ -20,15 +20,42 @@ function createAudioGraph() {
 }
 
 /**
- * Ensure playback AudioContext exists and kick resume.
- * Returns a promise that resolves after resume when suspended/interrupted so
- * unlock/startBgm can start BufferSources only once the context is running.
+ * Kick actx.resume() but never hang forever — iOS can leave resume() pending
+ * indefinitely when called outside a user gesture, which used to stick bgmStartLock
+ * and silence music for the whole session.
+ */
+function resumeAudio(timeoutMs) {
+  createAudioGraph();
+  if (actx.state === "running") return Promise.resolve(actx);
+  const ms = timeoutMs == null ? 800 : timeoutMs;
+  const resumeP = actx.resume().then(() => actx).catch(() => actx);
+  return Promise.race([
+    resumeP,
+    new Promise((resolve) => setTimeout(() => resolve(actx), ms)),
+  ]);
+}
+
+/**
+ * Ensure playback AudioContext exists and kick resume (timed).
  * Preload must NOT await this — see fetchDecode (uses OfflineAudioContext).
  */
+let _bgmNudgeQueued = false;
 function ensureAudio() {
   createAudioGraph();
+  // Global nudge: any SFX/input path that touches audio also retries silent BGM
+  if (bgm && bgm.wanted && !bgmStartLock && !_bgmNudgeQueued) {
+    try {
+      if (!bgmActuallyPlaying()) {
+        _bgmNudgeQueued = true;
+        Promise.resolve().then(() => {
+          _bgmNudgeQueued = false;
+          if (bgm.wanted && !bgmActuallyPlaying()) startBgm();
+        });
+      }
+    } catch (_) {}
+  }
   if (actx.state === "suspended" || actx.state === "interrupted") {
-    return actx.resume().then(() => actx).catch(() => actx);
+    return resumeAudio(800);
   }
   return Promise.resolve(actx);
 }
@@ -227,9 +254,10 @@ function bgmLoopPoints(buf) {
   return { start: a / buf.sampleRate, end: b / buf.sampleRate };
 }
 function bgmActuallyPlaying() {
+  // HTML path counts even if WebAudio ctx is suspended
+  if (bgm.html && !bgm.html.paused && !bgm.html.ended) return true;
   if (!actx || actx.state !== "running") return false;
   if (bgm.src) return true; // BufferSource still held → looping (onended clears it)
-  if (bgm.html) return !bgm.html.paused && !bgm.html.ended;
   return false;
 }
 function clearBgmPlayback() {
@@ -243,43 +271,75 @@ function clearBgmPlayback() {
     try { bgm.html.pause(); } catch (_) {}
   }
 }
+/** Lazily create HTMLAudio fallback (same URL); used when WebAudio can't run yet. */
+function ensureBgmHtml() {
+  if (bgm.html) return bgm.html;
+  if (!bgm.url) return null;
+  const h = new Audio(bgm.url);
+  h.loop = true;
+  h.preload = "auto";
+  h.volume = BGM_VOLUME;
+  h.muted = muted;
+  bgm.html = h;
+  return h;
+}
+function startBgmHtml() {
+  const h = ensureBgmHtml();
+  if (!h) return false;
+  h.muted = muted;
+  h.volume = BGM_VOLUME * (cryAudio.playing ? BGM_DUCK : 1);
+  try {
+    if (h.paused || h.ended) {
+      const pr = h.play();
+      if (pr && pr.then) {
+        pr.then(() => { bgm.starts++; if (!bgm.mode) bgm.mode = "html"; }).catch(() => {});
+      } else {
+        bgm.starts++;
+        if (!bgm.mode) bgm.mode = "html";
+      }
+    }
+    return true;
+  } catch (_) { return false; }
+}
 async function loadBgm() {
   bgm.url = pickAudioUrl("audio/bgm_main");
+  // Pre-create HTML element so the first gesture can .play() synchronously (iOS).
+  ensureBgmHtml();
   try {
     bgm.buf = await fetchDecode(bgm.url);
     const lp = bgmLoopPoints(bgm.buf);
     bgm.loopStart = lp.start; bgm.loopEnd = lp.end;
-    bgm.mode = "webaudio";
+    bgm.mode = bgm.mode || "webaudio";
   } catch (e) {
     console.warn("[HBC] music decode failed, using HTMLAudio loop", e && e.message);
-    bgm.html = new Audio(bgm.url);
-    bgm.html.loop = true;
-    bgm.html.preload = "auto";
-    bgm.html.volume = BGM_VOLUME;
-    bgm.html.muted = muted;
     bgm.mode = "html";
   }
+  // Global: whenever buffer/html becomes ready and user already gestured, start
   if (bgm.wanted) startBgm();
 }
 let bgmStartLock = null; // coalesce concurrent unlock taps during resume
+let bgmStartLockAt = 0;
 async function startBgm() {
   bgm.wanted = true;
+  // Abandon a hung lock (iOS resume() pending forever outside a gesture)
+  if (bgmStartLock && performance.now() - bgmStartLockAt > 1000) {
+    bgmStartLock = null;
+  }
   if (bgmStartLock) return bgmStartLock;
+  bgmStartLockAt = performance.now();
   bgmStartLock = (async () => {
     await ensureAudio();
     // Already audibly looping — stay idempotent
     if (bgmActuallyPlaying()) return;
-    // Stale silent start (src set while ctx suspended, source ended, html paused) → clear & restart
+    // Stale silent start → clear & restart
     clearBgmPlayback();
     try {
-      if (bgm.buf && actx) {
-        if (actx.state !== "running") return; // still locked; next gesture retries
+      if (bgm.buf && actx && actx.state === "running") {
         if (!bgm.gain) {
           bgm.gain = actx.createGain();
           bgm.gain.gain.value = BGM_VOLUME;
           bgm.gain.connect(masterGain || actx.destination);
         } else {
-          // Re-attach if graph was rebuilt; keep volume in sync with mute duck
           bgm.gain.gain.value = BGM_VOLUME * (cryAudio.playing ? BGM_DUCK : 1);
         }
         const src = actx.createBufferSource();
@@ -294,39 +354,48 @@ async function startBgm() {
         src.start(0, bgm.offset);
         bgm.src = src;
         bgm.starts++;
-      } else if (bgm.html) {
-        bgm.html.muted = muted;
-        bgm.html.currentTime = 0;
-        const pr = bgm.html.play();
-        bgm.starts++;
-        if (pr && pr.catch) pr.catch(() => { bgm.starts--; }); // not unlocked yet; next gesture retries
+        bgm.mode = "webaudio";
+        // Prefer WebAudio — silence HTML twin if it was the interim path
+        if (bgm.html) { try { bgm.html.pause(); } catch (_) {} }
+      } else {
+        // Context not running yet or buf still loading — HTML play (gesture-safe via unlock)
+        startBgmHtml();
       }
-      // else: buffer still loading — loadBgm() re-calls startBgm when wanted
-    } catch (e) { console.warn("[HBC] music start", e && e.message); }
+    } catch (e) { console.warn("[HBC] music start", e && e.message); try { startBgmHtml(); } catch (_) {} }
   })().finally(() => { bgmStartLock = null; });
   return bgmStartLock;
 }
-// Any key / tap / click unlocks audio and kicks the music off (idempotent when already audible)
+/**
+ * GLOBAL audio unlock — one path for every refresh/level.
+ * Runs in the gesture turn: sync resume + startBgm (HTML sync play inside start when needed).
+ */
 function unlockAudio() {
-  // Create+resume inside the gesture, then start (or restart if wanted but silent)
-  ensureAudio().then(() => startBgm());
+  bgm.wanted = true;
+  createAudioGraph();
+  // Resume synchronously inside the user gesture (iOS requires this)
+  if (actx.state === "suspended" || actx.state === "interrupted") {
+    try { actx.resume(); } catch (_) {}
+  }
+  // Break hung lock so this gesture can start fresh
+  if (bgmStartLock && performance.now() - bgmStartLockAt > 400) bgmStartLock = null;
+  // Sync HTML kick inside the gesture before any await (iOS autoplay)
+  if (!bgmActuallyPlaying() && (bgm.url || bgm.html)) startBgmHtml();
+  startBgm();
 }
-// touchstart matters on iOS (user-activation token); touchend alone is flaky after other handlers
+// touchstart matters on iOS; pointerdown/keydown cover desktop
 ["keydown", "pointerdown", "touchstart", "touchend", "mousedown"].forEach(ev =>
   window.addEventListener(ev, unlockAudio, { capture: true, passive: true }));
 document.addEventListener("visibilitychange", () => {
-  // iOS can leave the context interrupted/suspended; resume + restart BGM if wanted but silent
   if (document.hidden || !bgm.wanted) return;
-  ensureAudio().then(() => {
-    if (!bgmActuallyPlaying()) startBgm();
-  });
+  createAudioGraph();
+  if (actx.state === "suspended" || actx.state === "interrupted") {
+    try { actx.resume(); } catch (_) {}
+  }
+  if (!bgmActuallyPlaying()) startBgm();
 });
-// If a gesture set wanted before decode finished, ensure we retry once the tab is interactive
 document.addEventListener("pageshow", () => {
   if (!bgm.wanted) return;
-  ensureAudio().then(() => {
-    if (!bgmActuallyPlaying()) startBgm();
-  });
+  if (!bgmActuallyPlaying()) startBgm();
 });
 function duckBgm(on) {
   if (bgm.gain && actx) {
