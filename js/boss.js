@@ -14,6 +14,7 @@ const BOSS_MINION_N = [2, 3, 4];
 const BOSS_VULN = [1.6, 1.35, 1.15];
 const BOSS_HIT_STUN = 1.15; // post-stomp recovery before hostile again
 const BOSS_IDLE = [1.1, 0.85, 0.65];
+const BOSS_MINION_VULN_FAILSAFE = 12; // always go yellow by then (minion-clear can be earlier)
 const BOSS_ATTACKS = ["beam", "coins", "minions"];
 
 let boss = null; // null outside Level 3
@@ -23,8 +24,8 @@ function makeBoss() {
   const arenaL = level.arenaLeft != null ? level.arenaLeft : checkpoints[Math.min(1, checkpoints.length - 1)].x;
   const arenaR = LEVEL_W * TILE;
   const floor = GROUND_Y * TILE;
-  // Sit on the right half of the arena, facing left toward the entrance
-  const x = arenaL + Math.floor((arenaR - arenaL - BOSS_W) * 0.62);
+  // Flush against the arena / screen right edge, facing left toward the entrance
+  const x = arenaR - BOSS_W;
   const y = floor - BOSS_H;
   const caps = [];
   for (let i = 0; i < 14; i++) {
@@ -146,6 +147,7 @@ function clearBossMinions() {
 }
 
 function beginBossVulnerable() {
+  clearBossMinions();
   boss.mode = "vulnerable"; boss.modeT = 0;
   boss.beam = null;
   boss.flash = BOSS_VULN[bossPhase()];
@@ -279,9 +281,9 @@ function updateBoss(dt) {
   } else if (boss.mode === "coins") {
     if (boss.coins.length === 0 && boss.modeT > 0.5) beginBossVulnerable();
   } else if (boss.mode === "minions") {
-    // Must clear all spawned minions (long failsafe only)
+    // Clear all minions for an early yellow; timer always fires regardless of minions
     const allDead = boss.minions.length === 0 || boss.minions.every(m => !m.alive);
-    if ((allDead && boss.modeT > 0.6) || boss.modeT > 45) beginBossVulnerable();
+    if ((allDead && boss.modeT > 0.6) || boss.modeT >= BOSS_MINION_VULN_FAILSAFE) beginBossVulnerable();
   } else if (boss.mode === "stunned") {
     if (boss.modeT >= BOSS_HIT_STUN) { boss.mode = "idle"; boss.modeT = 0; boss.nextAtk = 0.6; boss.flash = 0; }
   } else if (boss.mode === "vulnerable") {

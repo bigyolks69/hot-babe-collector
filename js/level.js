@@ -67,8 +67,8 @@ const SECTIONS = {
       G(0, 18), P(6, 13, 3), P(11, 12, 3) ],
     picks: [[7, 11], [12, 10]], enemies: [], cps: [2] },
   // Boss arena (~1 screen / 30 tiles). Entrance CP; goal unlocks after defeat.
-  // Side ledges at y=13 (2 tiles). P(15,13) sits by the crank for stomps.
-  bossArena: { w: 30, plats: [G(0, 30), P(8, 13, 3), P(15, 13, 3)],
+  // Sidewalk ledges at y=13 (2-tile rise). Trail across mid-arena; P(20,13) near crank with gap — not flush to boss.
+  bossArena: { w: 30, plats: [G(0, 30), P(5, 13, 3), P(10, 13, 3), P(15, 13, 3), P(20, 13, 3)],
     picks: [], enemies: [], cps: [1], goal: 26 },
 };
 

@@ -29,6 +29,9 @@ Script load order (do not reorder): boot → audio → babes → input → cards
 
 ## Recent changes
 
+- **Boss failsafe (L3):** yellow/vulnerable always after **12s** in a minion wave (minion-clear still early-paths). Clears leftover minions on yellow so a vanished minion cannot softlock.
+- **Boss arena layout:** boss flush to arena/screen **right**; mid-arena sidewalk trail (`P(5/10/15/20,13,3)`, 2-tile gaps); near-crank ledge not flush (gap before cabinet).
+
 - **Modular split** — giant `index.html` → CSS + JS modules above. **No gameplay changes.**
 - **Levels 1–3** — side-scroll platforms; L2 flyer (final art); L3 neon rooftop + Gacha Machine Demon (crank stomps, pity beam, coin spit, minions, Rare+ reward).
 - **All-30 aura** — Super Saiyan fire loop behind hero when every babe is owned (`art/vfx/aura/`, `?v=2`).
