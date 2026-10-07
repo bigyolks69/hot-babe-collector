@@ -218,6 +218,9 @@ function drawWorld() {
   ctx.fill();
   }
 
+  // sky heart drop (world space; HUD hearts stay in drawHUD)
+  drawFloatHeart();
+
   // player (pixel hero or fallback shapes)
   drawPlayer();
 
@@ -338,7 +341,7 @@ function drawPlayTimer(x, y, opts) {
 
 function drawHUD() {
   // hearts
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < MAX_HEARTS; i++) {
     const hx = 16 + i * 28, hy = 14;
     ctx.fillStyle = i < hearts ? "#ff4d6d" : "#44222a";
     ctx.beginPath();

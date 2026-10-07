@@ -308,6 +308,91 @@ function verticalCamTarget() {
 let coins = [];
 let enemies = [];
 let particles = [];
+
+// Sky heart drop: when HP < max, every 20–30s one heart floats down from above the camera.
+const MAX_HEARTS = 3;
+let floatHeart = null; // { x, y, w, h, vy, bob } or null — at most one
+let heartDropTimer = 0; // seconds until next spawn attempt (only ticks in play while hearts < max)
+
+function nextHeartDropDelay() {
+  return 20 + Math.random() * 10; // 20–30s
+}
+function resetHeartDrop() {
+  floatHeart = null;
+  heartDropTimer = nextHeartDropDelay();
+}
+function spawnFloatHeart() {
+  if (floatHeart || hearts >= MAX_HEARTS) return;
+  const hw = 22, hh = 20;
+  const pad = 36 + Math.random() * 28; // slight margin variation so edges aren't always the same
+  const span = Math.max(8, W - pad * 2 - hw);
+  // Random X across the visible camera width each spawn (never the same spot every time)
+  const x = cameraX + pad + Math.random() * span;
+  const y = cameraY - 8 - Math.random() * 36; // slight Y variation above top of screen
+  const vy = 42 + Math.random() * 22; // slow fall with mild speed jitter
+  floatHeart = { x, y, w: hw, h: hh, vy, bob: Math.random() * Math.PI * 2 };
+}
+function updateFloatHeart(dt) {
+  if (hearts >= MAX_HEARTS) {
+    // No spawn while full; clear any stray and arm a fresh delay for after the next hit
+    if (floatHeart) floatHeart = null;
+    heartDropTimer = nextHeartDropDelay();
+    return;
+  }
+  if (!floatHeart) {
+    heartDropTimer -= dt;
+    if (heartDropTimer <= 0) {
+      spawnFloatHeart();
+      heartDropTimer = nextHeartDropDelay();
+    }
+  }
+  if (!floatHeart) return;
+  floatHeart.bob += dt * 3.2;
+  floatHeart.y += floatHeart.vy * dt;
+  // gentle sideways drift so the fall path isn't a straight vertical line
+  floatHeart.x += Math.sin(floatHeart.bob) * 18 * dt;
+  if (aabb(player, floatHeart)) {
+    hearts = Math.min(MAX_HEARTS, hearts + 1);
+    spawnParticles(floatHeart.x + floatHeart.w / 2, floatHeart.y + floatHeart.h / 2, "#ff4d6d", 10);
+    spawnParticles(floatHeart.x + floatHeart.w / 2, floatHeart.y + floatHeart.h / 2, "#ffffff", 4);
+    try { sfx.coin(); } catch (e) {}
+    floatHeart = null;
+    heartDropTimer = nextHeartDropDelay();
+    return;
+  }
+  // Despawn once well below the camera / level
+  if (floatHeart.y > cameraY + H + 48 || floatHeart.y > (LEVEL_H + 2) * TILE) {
+    floatHeart = null;
+    heartDropTimer = nextHeartDropDelay();
+  }
+}
+function drawFloatHeart() {
+  if (!floatHeart) return;
+  const h = floatHeart;
+  const hx = h.x + h.w / 2;
+  const hy = h.y + h.h / 2 + Math.sin(h.bob) * 3;
+  const s = 1.15; // match HUD heart scale roughly
+  ctx.save();
+  ctx.globalAlpha = 0.92;
+  // soft glow
+  ctx.fillStyle = "rgba(255,77,109,0.28)";
+  ctx.beginPath();
+  ctx.arc(hx, hy + 2, 14, 0, Math.PI * 2);
+  ctx.fill();
+  // pixel-HUD style red heart (same bezier as drawHUD)
+  ctx.fillStyle = "#ff4d6d";
+  ctx.beginPath();
+  ctx.moveTo(hx, hy + 6 * s);
+  ctx.bezierCurveTo(hx, hy, hx + 12 * s, hy, hx + 12 * s, hy + 6 * s);
+  ctx.bezierCurveTo(hx + 12 * s, hy + 14 * s, hx, hy + 18 * s, hx, hy + 18 * s);
+  ctx.bezierCurveTo(hx, hy + 18 * s, hx - 12 * s, hy + 14 * s, hx - 12 * s, hy + 6 * s);
+  ctx.bezierCurveTo(hx - 12 * s, hy, hx, hy, hx, hy + 6 * s);
+  ctx.fill();
+  // tiny highlight
+  ctx.fillStyle = "rgba(255,255,255,0.55)";
+  ctx.fillRect(hx - 6, hy - 2, 3, 3);
+  ctx.restore();
+}
 let callouts = []; // floating text
 let slot = null; // slot machine overlay (gameplay keeps running)
 const SLOT_PANEL_Y = 48;
@@ -422,6 +507,7 @@ function resetLevel(full) {
   stopDeathCry();
   hearts = 3;
   invuln = 0;
+  resetHeartDrop();
   congrats = null;
   buffToast = null;
   buffPending = false;

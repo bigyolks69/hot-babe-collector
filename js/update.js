@@ -199,6 +199,9 @@ function updatePlay(dt) {
   if (player.flash > 0) player.flash -= dt;
   player.anim += dt * (Math.abs(player.vx) > 20 ? 10 : 4);
 
+  // Sky heart drop (timer only advances here — paused in menu/win/death)
+  updateFloatHeart(dt);
+
   // camera (boss lock overrides the follow when the arena is sealed)
   const bossLocked = boss && (boss.dual ? boss.locked && !boss.defeated : boss.locked && !boss.defeated);
   if (!bossLocked) {
@@ -350,6 +353,7 @@ function updateDead(dt) {
 function resetAfterDeath() {
   hearts = 3;
   invuln = 1.5;
+  resetHeartDrop();
   deathCry = null;
   stopDeathCry();
   const cp = checkpoints[checkpointIdx];

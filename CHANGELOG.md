@@ -28,6 +28,8 @@ No build step. Classic `<script>` tags (not ES modules) so offline `file://` kee
 Script load order (do not reorder): boot → audio → babes → input → cards → level → game → boss → update → ui → main.
 
 ## Recent changes
+- **Sky heart drop (heartdrop1):** when hearts < 3, every 20–30s (random) one red heart floats slowly from above the camera; collide to restore +1 (capped). Horizontal X randomized across the visible camera each spawn (plus slight Y/speed/drift variation) so it never drops from the same spot. Only one at a time; timer pauses off play (menu/win/death); cleared on level reset / checkpoint respawn. Collect SFX reuses coin beep. Cache `?v=heartdrop1`.
+
 - **BGM clean rewrite (bgmclean1):** delete pause-on-hide / dual-path / lock spaghetti. One `HTMLAudioElement` (`loop`, `audio/bgm_main.mp3`), preload on load, `.play()` after Start/first tap. OS/browser owns backgrounding — no visibility/blur/focus/pagehide BGM handlers. Mute + simple death-cry duck kept; SFX/cry untouched. Cache `?v=bgmclean1`.
 
 - **BGM pause when hidden (bgmpause1):** pause `HTMLAudioElement` BGM on `document.hidden` (`visibilitychange`), plus `pagehide` / `blur` for mobile app switches; resume via `.play()` only if `bgm.wanted` (never auto-start if never unlocked). Cache `?v=bgmpause1`.
