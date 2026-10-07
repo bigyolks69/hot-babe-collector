@@ -29,6 +29,7 @@ Script load order (do not reorder): boot → audio → babes → input → cards
 
 ## Recent changes
 
+- **Boss arena sidewalks:** one mid ledge only (`P(12,13,3)`); extras removed. Ranged attacks already cover full arena (beam strip / coin aim) — no range change.
 - **Boss failsafe (L3):** yellow/vulnerable always after **12s** in a minion wave (minion-clear still early-paths). Clears leftover minions on yellow so a vanished minion cannot softlock.
 - **Boss arena layout:** boss flush to arena/screen **right**; mid-arena sidewalk trail (`P(5/10/15/20,13,3)`, 2-tile gaps); near-crank ledge not flush (gap before cabinet).
 
