@@ -28,6 +28,8 @@ No build step. Classic `<script>` tags (not ES modules) so offline `file://` kee
 Script load order (do not reorder): boot → audio → babes → input → cards → level → game → boss → update → ui → main.
 
 ## Recent changes
+- **L4 reach polish:** lower solid+cracked airwalks to 0-collection jump reach (max ~2.73 tiles / y≥13 from ground); cracked lengths ≤50% with 2+ short segments + small hop gaps on long pits; no gap-adjacent blue safety pads. Cache `?v=l4reach1`.
+
 - **L4 cliff gaps:** remove blue safety airwalks beside cracked spans; widen those pits ~1.5×; brief foot contact arms crack (timer keeps running after dash-off). Cache `?v=l4cliff2`.
 
 - **L4 Neon Overpass redesign:** many more built-in cliffs/pits; solid elevated airwalks; cracked airwalks mostly over voids (break → pit death). Ghost leftover after crack fixed (`fallT` never advanced → non-collidable ledge stayed drawn). Debris burst on break; fallen plats stop drawing immediately. Restore-on-death unchanged. Cache `?v=l4cliff1`.
