@@ -28,6 +28,8 @@ No build step. Classic `<script>` tags (not ES modules) so offline `file://` kee
 Script load order (do not reorder): boot → audio → babes → input → cards → level → game → boss → update → ui → main.
 
 ## Recent changes
+- **Double Jump (all-30):** while every unique babe is owned (same live check as the SS aura — `ownedUniqueCount >= BABE_POOL.length`), Jump grants one extra mid-air hop; `airJumpsUsed` resets on land and turns off if a unique is lost. Congrats popup: "You attained Double Jump!" Cache `?v=dbljump1`.
+
 - **BGM pure HTML (bgmfix5):** hard fail — never played even on hard refresh. Dropped WebAudio BGM entirely. `loadBgm` sync-arms `HTMLAudioElement.loop` with script-relative absolute MP3 URL; `unlockAudio`/`startBgm` call `.play()` inside the gesture. Debug: `HBC.getBgm()`. Cache `?v=bgmfix5`.
 
 - **BGM HTML-primary (bgmfix4):** bgmfix3 waited on WebAudio decode before `ready` and dropped gesture-sync HTML `.play()` → music stayed silent when Start raced decode / autoplay blocked post-await play. Arm `HTMLAudioElement` immediately in `loadBgm`, mark ready before decode, sync `.play()` inside `unlockAudio`/`startBgm`, WebAudio only if HTML blocked. Cache `?v=bgmfix4`.

@@ -54,7 +54,10 @@ syncRecent();
 
 // Complete-collection celebration: fires once (flag persisted), right after the completing roll
 const COMPLETE_KEY = "hbc_complete_v1";
-const CONGRATS_TEXT = "Congrats! You completed the collection! Life doesn't suck anymore.";
+const CONGRATS_LINE1 = "Congrats! You completed the collection!";
+const CONGRATS_LINE2 = "Life doesn't suck anymore.";
+const CONGRATS_LINE3 = "You attained Double Jump!";
+const CONGRATS_TEXT = CONGRATS_LINE1 + " " + CONGRATS_LINE2 + " " + CONGRATS_LINE3;
 const CONGRATS_GUARD = 0.4; // input ignored this long after it appears (held jump etc.)
 const CONGRATS_IMG_SRC = "art/ui/congrats_all30.jpg"; // Iris all-30 group pic (1280×720, 16:9)
 const congratsImg = new Image();
@@ -361,7 +364,7 @@ let deathGridScroll = 0; // snap-scroll so lost babe is visible
 const player = {
   x: 64, y: 15 * TILE - PLAYER_H, w: PLAYER_W, h: PLAYER_H,
   vx: 0, vy: 0, onGround: false,
-  facing: 1, coyote: 0, jumpBuf: 0,
+  facing: 1, coyote: 0, jumpBuf: 0, airJumpsUsed: 0,
   anim: 0, flash: 0, stun: 0, stompGrace: 0, fromStomp: false,
   prevX: 64, prevY: 15 * TILE - PLAYER_H,
 };
@@ -452,7 +455,7 @@ function resetLevel(full) {
   }
   player.vx = 0; player.vy = 0;
   player.onGround = false;
-  player.coyote = 0; player.jumpBuf = 0; player.stun = 0; player.stompGrace = 0; player.fromStomp = false;
+  player.coyote = 0; player.jumpBuf = 0; player.airJumpsUsed = 0; player.stun = 0; player.stompGrace = 0; player.fromStomp = false;
   player.prevX = player.x; player.prevY = player.y;
   cameraX = Math.max(0, Math.min(player.x - W*0.35, LEVEL_W * TILE - W));
   if (level && level.vertical) {

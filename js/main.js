@@ -74,6 +74,7 @@ window.__HBC = {
     return { canvas: b, client: { x: r.left + b.x * s, y: r.top + b.y * s, w: b.w * s, h: b.h * s } }; },
   isCollectionComplete: () => collectionCompleteFlag,
   hasAura: () => hasAllBabesAura(),
+  hasDoubleJump: () => hasAllBabesAura(),
   getCollectionBuff: () => ({
     stacks: collectionBuffStacks(), uniques: ownedUniqueCount(collection),
     moveMul: collectionMoveMul(), jumpHeightMul: collectionJumpHeightMul(), jumpVelMul: collectionJumpVelMul(),

@@ -1144,7 +1144,7 @@ function congratsLayout() {
   const scale = r.width > 0 ? r.width / W : 1;
   // Continue stays ≥ ~200×56 CSS px so it is tappable on a small phone canvas
   const bw = Math.min(560, Math.max(240, 200 / scale)), bh = Math.min(140, Math.max(60, 56 / scale));
-  const marginX = 20, marginY = 8, pad = 14, gap = 8, titleH = 62;
+  const marginX = 20, marginY = 8, pad = 14, gap = 8, titleH = 90;
   const pw = W - marginX * 2;
   const phMax = H - marginY * 2;
   const imgAreaW = pw - pad * 2;
@@ -1189,16 +1189,18 @@ function drawCongrats(dt) {
   for (let i = 0; i <= 6; i++) bd.addColorStop(i / 6, `hsl(${(i * 60 + t * 120) % 360}, 100%, 65%)`);
   ctx.strokeStyle = bd; ctx.lineWidth = 4;
   roundRect(px, py, pw, ph, 18); ctx.stroke();
-  // Title (exact copy, two lines)
-  const split = CONGRATS_TEXT.indexOf("Life");
+  // Title (exact copy, three lines — collection + Double Jump reward)
   ctx.textAlign = "center";
   ctx.shadowColor = "rgba(255,90,154,0.8)"; ctx.shadowBlur = 14;
   ctx.fillStyle = "#ffe66d";
-  ctx.font = "bold 26px sans-serif";
-  ctx.fillText(CONGRATS_TEXT.slice(0, split).trim(), W / 2, py + 28);
+  ctx.font = "bold 24px sans-serif";
+  ctx.fillText(CONGRATS_LINE1, W / 2, py + 26);
   ctx.fillStyle = "#ff8ec8";
+  ctx.font = "bold 20px sans-serif";
+  ctx.fillText(CONGRATS_LINE2, W / 2, py + 50);
+  ctx.fillStyle = "#ffe66d";
   ctx.font = "bold 22px sans-serif";
-  ctx.fillText(CONGRATS_TEXT.slice(split), W / 2, py + 54);
+  ctx.fillText(CONGRATS_LINE3, W / 2, py + 76);
   ctx.shadowBlur = 0;
   // Iris all-30 group pic — draw contain into the 16:9 slot (letterbox only if aspect drifts)
   if (imgOk(congratsImg)) {

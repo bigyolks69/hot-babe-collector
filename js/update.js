@@ -20,12 +20,16 @@ function updatePlay(dt) {
     }
     player.vx = Math.max(-moveMaxNow(), Math.min(moveMaxNow(), player.vx));
 
-    // jump buffer / coyote
+    // jump buffer / coyote + all-30 double jump (live unique count, same as aura)
     if (justPressed[" "] || justPressed["arrowup"] || justPressed["w"]) {
       player.jumpBuf = JUMP_BUF;
     }
-    if (player.onGround) player.coyote = COYOTE;
-    else player.coyote -= dt;
+    if (player.onGround) {
+      player.coyote = COYOTE;
+      player.airJumpsUsed = 0; // reset air jumps on land
+    } else {
+      player.coyote -= dt;
+    }
     player.jumpBuf -= dt;
 
     if (player.jumpBuf > 0 && player.coyote > 0) {
@@ -33,6 +37,19 @@ function updatePlay(dt) {
       player.onGround = false;
       player.coyote = 0;
       player.jumpBuf = 0;
+      sfx.jump();
+    } else if (
+      player.jumpBuf > 0 &&
+      !player.onGround &&
+      player.coyote <= 0 &&
+      hasAllBabesAura() &&
+      player.airJumpsUsed < 1
+    ) {
+      // one extra jump in air while full unique collection is held
+      player.vy = jumpVNow();
+      player.airJumpsUsed = 1;
+      player.jumpBuf = 0;
+      player.fromStomp = false;
       sfx.jump();
     }
     // variable jump height — never cut an active stomp bounce until apex
