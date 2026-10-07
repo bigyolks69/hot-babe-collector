@@ -157,13 +157,22 @@ let resetConfirm = null; // { t } while the confirm popup is up
 let resetToast = null;   // { t, dur } brief "Collection reset" after confirming
 const RESET_CONFIRM_GUARD = 0.25; // confirm ignored this long (key-repeat / double-fire)
 function hardRefreshCache() {
-  // Force full page + asset re-fetch (bypass HTTP cache) without wiping localStorage.
+  // Clear Cache Storage (if any), then unique-query navigate. Does not wipe localStorage.
+  const go = () => {
+    try {
+      const base = location.pathname || "/";
+      location.replace(base + "?_=" + Date.now() + (location.hash || ""));
+    } catch (e) {
+      location.reload();
+    }
+  };
   try {
-    const base = location.pathname || "/";
-    location.href = base + "?_=" + Date.now() + (location.hash || "");
-  } catch (e) {
-    location.reload();
-  }
+    if (typeof caches !== "undefined" && caches.keys) {
+      caches.keys().then((ks) => Promise.all(ks.map((k) => caches.delete(k)))).then(go, go);
+      return;
+    }
+  } catch (e) { /* fall through */ }
+  go();
 }
 function canOpenResetConfirm() {
   return !resetConfirm && state === "collection";

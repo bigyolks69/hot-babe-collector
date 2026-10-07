@@ -154,8 +154,8 @@ const AURA_W = 56, AURA_H = 80, AURA_FRAME_MS = 110;
 const AURA_FRAMES = [];
 for (let i = 0; i < 6; i++) {
   const im = new Image();
-  im.onerror = () => console.warn("[HBC] aura frame failed: aura_fire_" + i);
-  im.src = "art/vfx/aura/aura_fire_" + i + ".png?v=aura5";
+  im.onerror = () => console.warn("[HBC] aura frame failed: aura_ss_" + i);
+  im.src = "art/vfx/aura/aura_ss_" + i + ".png?v=ss1";
   AURA_FRAMES.push(im);
 }
 function hasAllBabesAura() {

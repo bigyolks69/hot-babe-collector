@@ -233,12 +233,12 @@ audio/**
 !art/ui/
 !art/ui/congrats_all30.jpg
 
-# Super Saiyan aura (all-30 unlock) — 6 loop frames only
+# Super Saiyan aura (all-30 unlock) — 6 loop frames only (aura_ss_* renames break sticky mobile cache)
 !art/vfx/
 !art/vfx/aura/
-!art/vfx/aura/aura_fire_0.png
-!art/vfx/aura/aura_fire_1.png
-!art/vfx/aura/aura_fire_2.png
-!art/vfx/aura/aura_fire_3.png
-!art/vfx/aura/aura_fire_4.png
-!art/vfx/aura/aura_fire_5.png
+!art/vfx/aura/aura_ss_0.png
+!art/vfx/aura/aura_ss_1.png
+!art/vfx/aura/aura_ss_2.png
+!art/vfx/aura/aura_ss_3.png
+!art/vfx/aura/aura_ss_4.png
+!art/vfx/aura/aura_ss_5.png
