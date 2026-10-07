@@ -28,6 +28,8 @@ No build step. Classic `<script>` tags (not ES modules) so offline `file://` kee
 Script load order (do not reorder): boot → audio → babes → input → cards → level → game → boss → update → ui → main.
 
 ## Recent changes
+- **Mobile BGM silent until refresh:** await `AudioContext.resume()` before starting BGM; restart if wanted but not audibly playing (stale `bgm.src` / suspended ctx / html paused). Cache `?v=bgm1`.
+
 - **Aura rename + Refresh Cache:** frames renamed to `art/vfx/aura/aura_ss_0.png`…`aura_ss_5.png` (`?v=ss1`) to break sticky iOS/Pages cache of punched `aura_fire_*`; Refresh Cache clears Cache API then `location.replace` with unique `?_=`.
 - **SS aura solid fill:** solid yellow interior (no punch); closes gap above hair (`?v=aura5`).
 - **Mobile Menu + Refresh Cache:** touch `#tColl` label is **Menu** (desktop keeps Collection / C). Gallery panel adds **Refresh Cache** under Reset (hard reload via `?_=` timestamp). Desktop **P** opens the same gallery (not a collection reset).

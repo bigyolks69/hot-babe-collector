@@ -14,8 +14,13 @@ function ensureAudio() {
     masterGain.gain.value = muted ? 0 : 1;
     masterGain.connect(actx.destination);
   }
-  if (actx.state === "suspended") actx.resume();
   if (masterGain) masterGain.gain.value = muted ? 0 : 1;
+  // Await resume so BufferSource / HTML play start only after context is running
+  // (fire-and-forget callers still kick resume; unlock/startBgm await this).
+  if (actx.state === "suspended" || actx.state === "interrupted") {
+    return actx.resume().then(() => actx).catch(() => actx);
+  }
+  return Promise.resolve(actx);
 }
 
 function setMuted(v) {
@@ -83,7 +88,7 @@ function pickAudioUrl(baseNoExt) {
 }
 
 async function fetchDecode(url) {
-  ensureAudio();
+  await ensureAudio();
   const res = await fetch(url);
   if (!res.ok) throw new Error("fetch " + url + " " + res.status);
   const ab = await res.arrayBuffer();
@@ -202,6 +207,23 @@ function bgmLoopPoints(buf) {
   while (buf.length - b < maxTrim && !loudWin(b - win)) b -= win;
   return { start: a / buf.sampleRate, end: b / buf.sampleRate };
 }
+function bgmActuallyPlaying() {
+  if (!actx || actx.state !== "running") return false;
+  if (bgm.src) return true; // BufferSource still held → looping (onended clears it)
+  if (bgm.html) return !bgm.html.paused && !bgm.html.ended;
+  return false;
+}
+function clearBgmPlayback() {
+  if (bgm.src) {
+    try { bgm.src.onended = null; } catch (_) {}
+    try { bgm.src.stop(0); } catch (_) {}
+    try { bgm.src.disconnect(); } catch (_) {}
+    bgm.src = null;
+  }
+  if (bgm.html) {
+    try { bgm.html.pause(); } catch (_) {}
+  }
+}
 async function loadBgm() {
   bgm.url = pickAudioUrl("audio/bgm_main");
   try {
@@ -220,45 +242,60 @@ async function loadBgm() {
   }
   if (bgm.wanted) startBgm();
 }
-function startBgm() {
+let bgmStartLock = null; // coalesce concurrent unlock taps during resume
+async function startBgm() {
   bgm.wanted = true;
-  if (bgm.src || (bgm.html && !bgm.html.paused)) return; // already looping — never restart
-  try {
-    if (bgm.buf && actx) {
-      if (!bgm.gain) {
-        bgm.gain = actx.createGain();
-        bgm.gain.gain.value = BGM_VOLUME;
-        bgm.gain.connect(masterGain || actx.destination);
+  if (bgmStartLock) return bgmStartLock;
+  bgmStartLock = (async () => {
+    await ensureAudio();
+    // Already audibly looping — stay idempotent
+    if (bgmActuallyPlaying()) return;
+    // Stale silent start (src set while ctx suspended, source ended, html paused) → clear & restart
+    clearBgmPlayback();
+    try {
+      if (bgm.buf && actx) {
+        if (actx.state !== "running") return; // still locked; next gesture retries
+        if (!bgm.gain) {
+          bgm.gain = actx.createGain();
+          bgm.gain.gain.value = BGM_VOLUME;
+          bgm.gain.connect(masterGain || actx.destination);
+        }
+        const src = actx.createBufferSource();
+        src.buffer = bgm.buf;
+        src.loop = true;
+        src.loopStart = bgm.loopStart;
+        src.loopEnd = bgm.loopEnd;
+        src.connect(bgm.gain);
+        src.onended = () => { if (bgm.src === src) bgm.src = null; };
+        bgm.t0 = actx.currentTime;
+        bgm.offset = bgm.loopStart;
+        src.start(0, bgm.offset);
+        bgm.src = src;
+        bgm.starts++;
+      } else if (bgm.html) {
+        bgm.html.muted = muted;
+        bgm.html.currentTime = 0;
+        const pr = bgm.html.play();
+        bgm.starts++;
+        if (pr && pr.catch) pr.catch(() => { bgm.starts--; }); // not unlocked yet; next gesture retries
       }
-      const src = actx.createBufferSource();
-      src.buffer = bgm.buf;
-      src.loop = true;
-      src.loopStart = bgm.loopStart;
-      src.loopEnd = bgm.loopEnd;
-      src.connect(bgm.gain);
-      bgm.t0 = actx.currentTime;
-      bgm.offset = bgm.loopStart;
-      src.start(0, bgm.offset);
-      bgm.src = src;
-      bgm.starts++;
-    } else if (bgm.html) {
-      bgm.html.muted = muted;
-      const pr = bgm.html.play();
-      bgm.starts++;
-      if (pr && pr.catch) pr.catch(() => { bgm.starts--; }); // not unlocked yet; next gesture retries
-    }
-  } catch (e) { console.warn("[HBC] music start", e && e.message); }
+    } catch (e) { console.warn("[HBC] music start", e && e.message); }
+  })().finally(() => { bgmStartLock = null; });
+  return bgmStartLock;
 }
-// Any key / tap / click unlocks audio and kicks the music off (idempotent)
+// Any key / tap / click unlocks audio and kicks the music off (idempotent when already audible)
 function unlockAudio() {
-  ensureAudio();
-  startBgm();
+  // Await resume, then startBgm (restarts if wanted but silent; idempotent if audible)
+  ensureAudio().then(() => startBgm());
 }
 ["keydown", "pointerdown", "touchend", "mousedown"].forEach(ev =>
   window.addEventListener(ev, unlockAudio, { capture: true, passive: true }));
 document.addEventListener("visibilitychange", () => {
-  // iOS can leave the context "interrupted" after a background trip; resume quietly when back
-  if (!document.hidden && actx && actx.state !== "running" && bgm.wanted) actx.resume().catch(() => {});
+  // iOS can leave the context interrupted/suspended; resume + restart BGM if wanted but silent
+  if (document.hidden || !bgm.wanted) return;
+  ensureAudio().then(() => {
+    if (!bgmActuallyPlaying()) startBgm();
+  });
 });
 function duckBgm(on) {
   if (bgm.gain && actx) {
