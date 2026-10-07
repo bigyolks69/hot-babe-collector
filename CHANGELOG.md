@@ -28,6 +28,8 @@ No build step. Classic `<script>` tags (not ES modules) so offline `file://` kee
 Script load order (do not reorder): boot → audio → babes → input → cards → level → game → boss → update → ui → main.
 
 ## Recent changes
+- **BGM pure HTML (bgmfix5):** hard fail — never played even on hard refresh. Dropped WebAudio BGM entirely. `loadBgm` sync-arms `HTMLAudioElement.loop` with script-relative absolute MP3 URL; `unlockAudio`/`startBgm` call `.play()` inside the gesture. Debug: `HBC.getBgm()`. Cache `?v=bgmfix5`.
+
 - **BGM HTML-primary (bgmfix4):** bgmfix3 waited on WebAudio decode before `ready` and dropped gesture-sync HTML `.play()` → music stayed silent when Start raced decode / autoplay blocked post-await play. Arm `HTMLAudioElement` immediately in `loadBgm`, mark ready before decode, sync `.play()` inside `unlockAudio`/`startBgm`, WebAudio only if HTML blocked. Cache `?v=bgmfix4`.
 
 - **BGM queue until decode (bgmfix3):** Start/unlock only sets `wanted` + resumes context; no start/HTML play before buffer exists (avoids hang). `loadBgm` → `onBgmDecodeComplete` starts if wanted. `startBgm` no-ops until `bgm.ready`. Global unlock kept. Cache `?v=bgmfix3`.

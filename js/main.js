@@ -115,10 +115,10 @@ window.__HBC = {
   getEnemySprites: () => Object.fromEntries(ENEMY_SPRITES.map(n => [n, imgOk(ENEMY_IMG[n])])),
   getEnemyFrames: () => enemies.map(e => ({ type: e.type, alive: e.alive, dir: e.dir, frame: e.type === "flyer" ? null : (e.alive ? enemyFrame(e) : (e.squishT != null && e.squishT < ENEMY_SQUISH_SHOW ? e.type + "-squished" : null)) })),
   getBgm: () => ({ mode: bgm.mode, url: bgm.url, wanted: bgm.wanted, ready: bgm.ready, unlocked: bgm.unlocked, starts: bgm.starts,
-    playing: !!bgm.src || !!(bgm.html && !bgm.html.paused),
-    loop: bgm.src ? bgm.src.loop : (bgm.html ? bgm.html.loop : null), loopStart: bgm.loopStart, loopEnd: bgm.loopEnd,
-    duration: bgm.buf ? bgm.buf.duration : null, pos: bgmPosition(), ctx: actx && actx.state, ctxTime: actx && actx.currentTime,
-    musicGain: bgm.gain ? bgm.gain.gain.value : null, master: masterGain ? masterGain.gain.value : null, muted }),
+    playing: !!(bgm.html && !bgm.html.paused && !bgm.html.ended), pending: !!bgm.htmlPlayPending,
+    loop: bgm.html ? bgm.html.loop : null, htmlMuted: bgm.html ? bgm.html.muted : null, htmlVol: bgm.html ? bgm.html.volume : null,
+    lastError: bgm.lastError || null, pos: bgmPosition(), ctx: actx && actx.state,
+    master: masterGain ? masterGain.gain.value : null, muted }),
   // measure output level after masterGain (what the speakers get) and of the music bus alone
   audioLevels: () => {
     if (!actx) return null;
