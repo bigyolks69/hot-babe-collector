@@ -1051,13 +1051,18 @@ function frame(dt) {
     congrats.t += dt;
     if (justPressed["enter"]) dismissCongrats();
     for (const k in justPressed) delete justPressed[k];
-  } else if (performance.now() - congratsClosedAt < 120) {
+  } else if (buffPopup) {
+    buffPopup.t += dt;
+    if (justPressed["enter"]) dismissBuffPopup();
+    for (const k in justPressed) delete justPressed[k];
+  } else if (performance.now() - congratsClosedAt < 120 || performance.now() - buffClosedAt < 120) {
     for (const k in justPressed) delete justPressed[k];
   }
   if (resetToast) { resetToast.t += dt; if (resetToast.t >= resetToast.dur) resetToast = null; }
-  const frozen = !!congrats || !!resetConfirm;
+  const frozen = !!congrats || !!resetConfirm || !!buffPopup;
   frameInner(frozen ? 0 : dt);
-  // Draw order: world (via frameInner) → congrats → reset confirm (always top) → toast
+  // Draw order: world → buff → congrats → reset confirm (always top) → toast
+  if (buffPopup && !congrats && !resetConfirm) drawBuffPopup(dt);
   if (congrats && !resetConfirm) drawCongrats(dt);
   if (resetConfirm) drawResetConfirm();
   if (resetToast) drawResetToast();
@@ -1065,6 +1070,75 @@ function frame(dt) {
 
 // Popup geometry (canvas units). The Continue button is sized so it is at least ~200x56 CSS px on
 // screen, which makes it a comfortable tap target even on a portrait phone where the canvas is small.
+
+function buffPopupLayout() {
+  const r = canvas.getBoundingClientRect();
+  const scale = r.width > 0 ? r.width / W : 1;
+  const bw = Math.min(520, Math.max(240, 200 / scale)), bh = Math.min(120, Math.max(56, 56 / scale));
+  const pw = Math.min(640, W - 48), ph = Math.min(280, H - 80);
+  const px = (W - pw) / 2, py = (H - ph) / 2;
+  const btn = { x: W / 2 - bw / 2, y: py + ph - 24 - bh, w: bw, h: bh };
+  return { pw, ph, px, py, btn };
+}
+
+function drawBuffPopup(dt) {
+  const c = buffPopup, t = c.t;
+  const a = Math.min(1, t / 0.3);
+  const L = buffPopupLayout(), { pw, ph, px, py, btn } = L;
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.fillStyle = "rgba(10,6,22,0.72)";
+  ctx.fillRect(0, 0, W, H);
+  const pop = 1 + 0.04 * Math.max(0, 1 - t / 0.3);
+  ctx.translate(W / 2, py + ph / 2); ctx.scale(pop, pop); ctx.translate(-W / 2, -(py + ph / 2));
+  const bg = ctx.createLinearGradient(px, py, px + pw, py + ph);
+  bg.addColorStop(0, "#2a1848"); bg.addColorStop(1, "#4a1840");
+  ctx.fillStyle = bg;
+  roundRect(px, py, pw, ph, 16); ctx.fill();
+  ctx.strokeStyle = "#ffe66d"; ctx.lineWidth = 3;
+  roundRect(px, py, pw, ph, 16); ctx.stroke();
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#ffe66d";
+  ctx.font = "bold 22px sans-serif";
+  ctx.shadowColor = "rgba(255,90,154,0.7)"; ctx.shadowBlur = 10;
+  const stacks = collectionBuffStacks();
+  ctx.fillText("Collection boost! ×" + stacks, W / 2, py + 42);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = "#fff0f8";
+  ctx.font = "bold 18px sans-serif";
+  // wrap BUFF_TEXT into two lines at the exclamation if present
+  const msg = BUFF_TEXT;
+  const cut = msg.indexOf("! ");
+  if (cut > 0) {
+    ctx.fillText(msg.slice(0, cut + 1), W / 2, py + 92);
+    ctx.fillText(msg.slice(cut + 2), W / 2, py + 118);
+  } else {
+    ctx.fillText(msg, W / 2, py + 100);
+  }
+  ctx.fillStyle = "#9ad0ff";
+  ctx.font = "14px sans-serif";
+  const mv = Math.round((collectionMoveMul() - 1) * 100);
+  const jh = Math.round((collectionJumpHeightMul() - 1) * 100);
+  ctx.fillText("+" + mv + "% move  ·  +" + jh + "% jump height", W / 2, py + 152);
+  const ready = t >= BUFF_GUARD;
+  const glow = ready ? 0.5 + 0.5 * Math.sin(t * 4) : 0;
+  ctx.globalAlpha = a * (ready ? 1 : 0.55);
+  ctx.shadowColor = "rgba(255,230,109,0.9)"; ctx.shadowBlur = 8 + 12 * glow;
+  const bgr = ctx.createLinearGradient(0, btn.y, 0, btn.y + btn.h);
+  bgr.addColorStop(0, "#ff7ab8"); bgr.addColorStop(1, "#e0457f");
+  ctx.fillStyle = bgr;
+  roundRect(btn.x, btn.y, btn.w, btn.h, Math.min(20, btn.h / 2)); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = "#ffe66d"; ctx.lineWidth = 3;
+  roundRect(btn.x, btn.y, btn.w, btn.h, Math.min(20, btn.h / 2)); ctx.stroke();
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold " + Math.round(Math.min(40, btn.h * 0.42)) + "px sans-serif";
+  ctx.textBaseline = "middle";
+  ctx.fillText(isTouch ? "Continue" : "Continue  ⏎", W / 2, btn.y + btn.h / 2 + 1);
+  ctx.textBaseline = "alphabetic";
+  ctx.restore();
+}
+
 function congratsLayout() {
   const r = canvas.getBoundingClientRect();
   const scale = r.width > 0 ? r.width / W : 1;

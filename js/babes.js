@@ -135,6 +135,26 @@ function totalPulls(col) {
   return Object.values(col).reduce((s, n) => s + n, 0);
 }
 
+// ---------- Collection movement buff (every 5 unique babes) ----------
+// Stacks at 5/10/15/20/25/30 (max 6). Soft-capped so L1–L3 stays fair.
+const COLL_BUFF_STEP = 5;
+const COLL_BUFF_MAX_STACKS = 6;
+const COLL_BUFF_MOVE_PER = 0.07;   // +7% walk speed per stack → 1.42× at 6
+const COLL_BUFF_JUMP_H_PER = 0.05; // +5% jump *height* per stack → 1.30× at 6 (vel = √height)
+function collectionBuffStacks(col) {
+  col = col || (typeof collection !== "undefined" ? collection : {});
+  return Math.min(COLL_BUFF_MAX_STACKS, Math.floor(ownedUniqueCount(col) / COLL_BUFF_STEP));
+}
+function collectionMoveMul(col) {
+  return 1 + COLL_BUFF_MOVE_PER * collectionBuffStacks(col);
+}
+function collectionJumpHeightMul(col) {
+  return 1 + COLL_BUFF_JUMP_H_PER * collectionBuffStacks(col);
+}
+function collectionJumpVelMul(col) {
+  return Math.sqrt(collectionJumpHeightMul(col));
+}
+
 // ---------- localStorage collection (v1 counts map; v2 wraps same map) ----------
 const SAVE_KEY = "hbc_collection_v1";
 const SAVE_KEY_V2 = "hbc_collection_v2";

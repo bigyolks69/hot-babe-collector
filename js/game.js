@@ -9,6 +9,9 @@ const JUMP_CUT = 0.45;
 // Stomp bounce: HALF prior apex height → multiply |v| by √(1/2)
 const STOMP_V = -480 * Math.SQRT1_2;       // ~-339.4 (was -480)
 const STOMP_V_HELD = JUMP_V * Math.SQRT1_2; // ~-438.4 (was full JUMP_V)
+function moveMaxNow() { return MOVE_MAX * collectionMoveMul(); }
+function jumpVNow() { return JUMP_V * collectionJumpVelMul(); }
+
 // Derived (full held jump): maxJumpH = v^2/(2g) ≈ 87.4px (~2.73 tiles).
 // Level design uses ≤2 tile rises (~64px ≈ 73% of max) for comfort.
 const COYOTE = 0.1;
@@ -59,13 +62,58 @@ function checkCollectionComplete() {
   try { sfx.win(); } catch (e) {}
 }
 let congratsClosedAt = -1e9;
+
+// Collection buff threshold popup (every +5 unique)
+const BUFF_TEXT = "Your collection is growing! It's making you faster and stronger!";
+const BUFF_GUARD = 0.45; // short hold before Continue works
+let buffPopup = null; // { t } while up
+let buffAnnouncedStacks = 0; // last tier we announced this session
+let buffPending = false; // wait for congrats / settle
+let buffClosedAt = -1e9;
+function syncBuffAnnouncedFromCollection() {
+  buffAnnouncedStacks = collectionBuffStacks();
+}
+function showBuffPopup() {
+  if (buffPopup) return;
+  buffPopup = { t: 0 };
+  buffPending = false;
+  try { sfx.new(); } catch (e) {}
+}
+function dismissBuffPopup(force) {
+  if (!buffPopup || (!force && buffPopup.t < BUFF_GUARD)) return;
+  buffPopup = null;
+  buffClosedAt = performance.now();
+  if (slotQueue > 0 && !congrats && !buffPopup) {
+    slotQueue--;
+    if (!beginSlotRoll()) slotQueue = 0;
+  }
+}
+function syncCollectionBuffAnnounce() {
+  const stacks = collectionBuffStacks();
+  if (stacks < buffAnnouncedStacks) {
+    buffAnnouncedStacks = stacks; // dropped below — can re-fire on re-cross
+    return;
+  }
+  if (stacks > buffAnnouncedStacks) {
+    buffAnnouncedStacks = stacks;
+    if (congrats) buffPending = true;
+    else showBuffPopup();
+  }
+}
+// Seed from saved collection so refresh does not re-popup current tiers
+syncBuffAnnouncedFromCollection();
+
+
 // Only the Continue button (click / tap) or Enter closes it; `force` is for debug hooks/tests only
 function dismissCongrats(force) {
   if (!congrats || (!force && congrats.t < CONGRATS_GUARD)) return;
   congrats = null;
   congratsClosedAt = performance.now();
-  // Rolls earned meanwhile resume now
-  if (!slot && slotQueue > 0) { slotQueue--; if (!beginSlotRoll()) slotQueue = 0; }
+  const pendingBuff = buffPending;
+  buffPending = false;
+  if (pendingBuff) showBuffPopup();
+  // Rolls earned meanwhile resume now (buff popup freezes until Continue)
+  else if (!slot && slotQueue > 0 && !buffPopup) { slotQueue--; if (!beginSlotRoll()) slotQueue = 0; }
 }
 // Collection reset: gallery "Reset collection" button → confirm popup (no P key).
 // Wipes babe counts + tray order + complete flag; keeps level progress and mute.
@@ -95,6 +143,9 @@ function confirmResetCollection() {
   // Wipe babes + tray + complete flag. Keep level progress + mute.
   collection = {};
   saveCollection(collection);
+  syncBuffAnnouncedFromCollection();
+  buffPending = false;
+  buffPopup = null;
   recentBabes = [];
   saveRecent();
   collectionCompleteFlag = false;
@@ -184,8 +235,9 @@ function trayContains(sx, sy) {
 }
 /** Click/tap the babe tray → same as C (open gallery). Ignores blocking overlays; only in play. */
 function tryTrayOpenCollection(sx, sy) {
-  if (resetConfirm || congrats) return false;
+  if (resetConfirm || congrats || buffPopup) return false;
   if (performance.now() - congratsClosedAt < 300) return false;
+  if (performance.now() - buffClosedAt < 300) return false;
   if (state !== "play") return false; // match C; death Ouch / win ignore tray
   if (!trayContains(sx, sy)) return false;
   openCollection();
@@ -240,11 +292,14 @@ function resetLevel(full) {
   hearts = 3;
   invuln = 0;
   congrats = null;
+  buffPopup = null;
+  buffPending = false;
   if (level && level.boss) boss = makeBoss();
   else boss = null;
   if (full) {
     checkpointIdx = 0;
     collection = loadCollection();
+    syncBuffAnnouncedFromCollection();
     syncRecent();
     runGained = [];
     hudTray.scroll = 0;
@@ -401,6 +456,7 @@ function onHeartsZero() {
     collection[id]--;
     if (collection[id] <= 0) delete collection[id];
     saveCollection(collection);
+    syncCollectionBuffAnnounce(); // may drop stacks below announced tier
     const ch = CHAR_DEFS.find(c => c.id === id);
     lostName = ch ? ch.name : id;
     lostId = id;
@@ -608,9 +664,10 @@ function finishSlot() {
   }
   slot = null;
   checkCollectionComplete(); // shows the celebration right after the completing roll
+  if (prev === 0) syncCollectionBuffAnnounce();
   // Chain queued rolls immediately (even over death/win overlays — player earned them);
   // while the celebration is up they wait and resume when it's dismissed
-  if (slotQueue > 0 && !congrats) {
+  if (slotQueue > 0 && !congrats && !buffPopup) {
     slotQueue--;
     // If that was the last babe in the pool, the queued pickups have nothing left to roll
     if (!beginSlotRoll()) slotQueue = 0;

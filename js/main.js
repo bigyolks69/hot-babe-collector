@@ -74,6 +74,15 @@ window.__HBC = {
     return { canvas: b, client: { x: r.left + b.x * s, y: r.top + b.y * s, w: b.w * s, h: b.h * s } }; },
   isCollectionComplete: () => collectionCompleteFlag,
   hasAura: () => hasAllBabesAura(),
+  getCollectionBuff: () => ({
+    stacks: collectionBuffStacks(), uniques: ownedUniqueCount(collection),
+    moveMul: collectionMoveMul(), jumpHeightMul: collectionJumpHeightMul(), jumpVelMul: collectionJumpVelMul(),
+    moveMax: moveMaxNow(), jumpV: jumpVNow(),
+    announced: buffAnnouncedStacks, popup: !!buffPopup, pending: buffPending,
+  }),
+  getBuffPopup: () => buffPopup && { t: buffPopup.t, text: BUFF_TEXT },
+  dismissBuffPopup: (force) => dismissBuffPopup(!!force),
+
   getAuraFrame: () => Math.floor(performance.now() / AURA_FRAME_MS) % 6,
   getRecent: () => recentBabes.slice(),
   getTrayIds: () => recentBabes.filter(id => (collection[id] || 0) > 0).slice(0, HUD_SLOTS).reverse(),

@@ -29,6 +29,7 @@ Script load order (do not reorder): boot → audio → babes → input → cards
 
 ## Recent changes
 
+- **Collection buff:** every **5 unique** babes (5/10/15/20/25/30) stacks +**7%** move speed and +**5%** jump height (vel = √height). Soft cap 6 stacks → **1.42×** move / **1.30×** jump height. Live unique count (death can drop a stack). Threshold popup with Continue.
 - **Boss mobile clear:** boss inset **220px** from arena right so iPhone 13 portrait/landscape tray + jump no longer cover the cabinet.
 - **Boss arena sidewalks:** one mid ledge only (`P(12,13,3)`); extras removed. Ranged attacks already cover full arena (beam strip / coin aim) — no range change.
 - **Boss failsafe (L3):** yellow/vulnerable always after **12s** in a minion wave (minion-clear still early-paths). Clears leftover minions on yellow so a vanished minion cannot softlock.

@@ -17,7 +17,7 @@ function updatePlay(dt) {
       if (Math.abs(player.vx) <= fr) player.vx = 0;
       else player.vx -= Math.sign(player.vx) * fr;
     }
-    player.vx = Math.max(-MOVE_MAX, Math.min(MOVE_MAX, player.vx));
+    player.vx = Math.max(-moveMaxNow(), Math.min(moveMaxNow(), player.vx));
 
     // jump buffer / coyote
     if (justPressed[" "] || justPressed["arrowup"] || justPressed["w"]) {
@@ -28,7 +28,7 @@ function updatePlay(dt) {
     player.jumpBuf -= dt;
 
     if (player.jumpBuf > 0 && player.coyote > 0) {
-      player.vy = JUMP_V;
+      player.vy = jumpVNow();
       player.onGround = false;
       player.coyote = 0;
       player.jumpBuf = 0;
