@@ -24,8 +24,9 @@ function makeBoss() {
   const arenaL = level.arenaLeft != null ? level.arenaLeft : checkpoints[Math.min(1, checkpoints.length - 1)].x;
   const arenaR = LEVEL_W * TILE;
   const floor = GROUND_Y * TILE;
-  // Flush against the arena / screen right edge, facing left toward the entrance
-  const x = arenaR - BOSS_W;
+  // Near the right edge, but inset so iPhone tray + jump never cover body/dome
+  const BOSS_EDGE_PAD = 220; // canvas px clear of bottom-right HUD / touch jump
+  const x = arenaR - BOSS_W - BOSS_EDGE_PAD;
   const y = floor - BOSS_H;
   const caps = [];
   for (let i = 0; i < 14; i++) {
