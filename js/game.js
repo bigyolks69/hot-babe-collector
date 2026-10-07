@@ -95,31 +95,32 @@ function syncCollectionBuffAnnounce() {
 syncBuffAnnouncedFromCollection();
 
 function drawBuffToast() {
+  // Non-modal top banner only — never dims / fills the canvas, never pauses gameplay.
   if (!buffToast) return;
   const t = buffToast.t, dur = buffToast.dur;
   let a = 1;
   if (t < BUFF_TOAST_IN) a = t / BUFF_TOAST_IN;
   else if (t > dur - BUFF_TOAST_OUT) a = Math.max(0, (dur - t) / BUFF_TOAST_OUT);
   ctx.save();
-  ctx.globalAlpha = a * 0.95;
-  const pw = Math.min(720, W - 40), ph = 56;
-  const px = (W - pw) / 2, py = 14;
-  ctx.fillStyle = "rgba(18,8,32,0.88)";
-  roundRect(px, py, pw, ph, 12); ctx.fill();
-  ctx.strokeStyle = "rgba(255,230,109,0.75)"; ctx.lineWidth = 2;
-  roundRect(px, py, pw, ph, 12); ctx.stroke();
+  ctx.globalAlpha = a * 0.92;
+  const pw = Math.min(560, W - 80), ph = 44;
+  const px = (W - pw) / 2, py = 10;
+  ctx.fillStyle = "rgba(22,10,36,0.9)";
+  roundRect(px, py, pw, ph, 10); ctx.fill();
+  ctx.strokeStyle = "rgba(255,230,109,0.7)"; ctx.lineWidth = 1.5;
+  roundRect(px, py, pw, ph, 10); ctx.stroke();
   ctx.textAlign = "center";
   ctx.fillStyle = "#ffe66d";
-  ctx.font = "bold 15px sans-serif";
+  ctx.font = "bold 13px sans-serif";
   const msg = BUFF_TEXT;
   const cut = msg.indexOf("! ");
   if (cut > 0) {
-    ctx.fillText(msg.slice(0, cut + 1), W / 2, py + 22);
-    ctx.fillStyle = "#fff0f8";
-    ctx.font = "bold 14px sans-serif";
-    ctx.fillText(msg.slice(cut + 2), W / 2, py + 42);
+    ctx.fillText(msg.slice(0, cut + 1), W / 2, py + 17);
+    ctx.fillStyle = "#ffe8f4";
+    ctx.font = "bold 12px sans-serif";
+    ctx.fillText(msg.slice(cut + 2), W / 2, py + 33);
   } else {
-    ctx.fillText(msg, W / 2, py + 34);
+    ctx.fillText(msg, W / 2, py + 27);
   }
   ctx.restore();
 }

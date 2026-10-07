@@ -1058,7 +1058,7 @@ function frame(dt) {
   if (buffToast) { buffToast.t += dt; if (buffToast.t >= buffToast.dur) buffToast = null; }
   const frozen = !!congrats || !!resetConfirm;
   frameInner(frozen ? 0 : dt);
-  // Draw order: world → buff toast (non-blocking) → congrats → reset confirm → reset toast
+  // Buff toast is non-blocking (drawn over world; does not freeze). Congrats still pauses.
   if (buffToast && !congrats && !resetConfirm) drawBuffToast();
   if (congrats && !resetConfirm) drawCongrats(dt);
   if (resetConfirm) drawResetConfirm();
