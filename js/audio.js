@@ -7,7 +7,8 @@ const MUTE_KEY = "hbc_muted";
 let muted = false;
 try { muted = localStorage.getItem(MUTE_KEY) === "1"; } catch (_) {}
 
-function ensureAudio() {
+/** Create the playback graph if needed. Does not await resume (safe during preload). */
+function createAudioGraph() {
   if (!actx) {
     actx = new AudioCtx();
     masterGain = actx.createGain();
@@ -15,8 +16,17 @@ function ensureAudio() {
     masterGain.connect(actx.destination);
   }
   if (masterGain) masterGain.gain.value = muted ? 0 : 1;
-  // Await resume so BufferSource / HTML play start only after context is running
-  // (fire-and-forget callers still kick resume; unlock/startBgm await this).
+  return actx;
+}
+
+/**
+ * Ensure playback AudioContext exists and kick resume.
+ * Returns a promise that resolves after resume when suspended/interrupted so
+ * unlock/startBgm can start BufferSources only once the context is running.
+ * Preload must NOT await this — see fetchDecode (uses OfflineAudioContext).
+ */
+function ensureAudio() {
+  createAudioGraph();
   if (actx.state === "suspended" || actx.state === "interrupted") {
     return actx.resume().then(() => actx).catch(() => actx);
   }
@@ -88,11 +98,20 @@ function pickAudioUrl(baseNoExt) {
 }
 
 async function fetchDecode(url) {
-  await ensureAudio();
+  // Fetch + decode WITHOUT awaiting playback-context resume. Under mobile / strict
+  // autoplay, actx.resume() from a pre-gesture ensureAudio can hang forever and
+  // would deadlock BGM/cry preload (wanted=true, buf never set → permanent silence).
   const res = await fetch(url);
   if (!res.ok) throw new Error("fetch " + url + " " + res.status);
   const ab = await res.arrayBuffer();
-  return await actx.decodeAudioData(ab.slice(0));
+  try {
+    const offline = new OfflineAudioContext(1, 1, 44100);
+    return await offline.decodeAudioData(ab.slice(0));
+  } catch (_) {
+    // Fallback: decode on playback ctx (create only — do not await resume)
+    createAudioGraph();
+    return await actx.decodeAudioData(ab.slice(0));
+  }
 }
 
 async function preloadCryAudio() {
@@ -100,7 +119,7 @@ async function preloadCryAudio() {
   cryAudio.loopUrl = pickAudioUrl("audio/cry_death_loop");
   // Prefer OGG path when supported; pickAudioUrl already chose
   try {
-    ensureAudio();
+    // Do not create/resume playback AudioContext during preload
     cryAudio.oneshotBuf = await fetchDecode(cryAudio.oneshotUrl);
     try { cryAudio.loopBuf = await fetchDecode(cryAudio.loopUrl); } catch (_) { cryAudio.loopBuf = null; }
     cryAudio.ready = true;
@@ -259,6 +278,9 @@ async function startBgm() {
           bgm.gain = actx.createGain();
           bgm.gain.gain.value = BGM_VOLUME;
           bgm.gain.connect(masterGain || actx.destination);
+        } else {
+          // Re-attach if graph was rebuilt; keep volume in sync with mute duck
+          bgm.gain.gain.value = BGM_VOLUME * (cryAudio.playing ? BGM_DUCK : 1);
         }
         const src = actx.createBufferSource();
         src.buffer = bgm.buf;
@@ -279,20 +301,29 @@ async function startBgm() {
         bgm.starts++;
         if (pr && pr.catch) pr.catch(() => { bgm.starts--; }); // not unlocked yet; next gesture retries
       }
+      // else: buffer still loading — loadBgm() re-calls startBgm when wanted
     } catch (e) { console.warn("[HBC] music start", e && e.message); }
   })().finally(() => { bgmStartLock = null; });
   return bgmStartLock;
 }
 // Any key / tap / click unlocks audio and kicks the music off (idempotent when already audible)
 function unlockAudio() {
-  // Await resume, then startBgm (restarts if wanted but silent; idempotent if audible)
+  // Create+resume inside the gesture, then start (or restart if wanted but silent)
   ensureAudio().then(() => startBgm());
 }
-["keydown", "pointerdown", "touchend", "mousedown"].forEach(ev =>
+// touchstart matters on iOS (user-activation token); touchend alone is flaky after other handlers
+["keydown", "pointerdown", "touchstart", "touchend", "mousedown"].forEach(ev =>
   window.addEventListener(ev, unlockAudio, { capture: true, passive: true }));
 document.addEventListener("visibilitychange", () => {
   // iOS can leave the context interrupted/suspended; resume + restart BGM if wanted but silent
   if (document.hidden || !bgm.wanted) return;
+  ensureAudio().then(() => {
+    if (!bgmActuallyPlaying()) startBgm();
+  });
+});
+// If a gesture set wanted before decode finished, ensure we retry once the tab is interactive
+document.addEventListener("pageshow", () => {
+  if (!bgm.wanted) return;
   ensureAudio().then(() => {
     if (!bgmActuallyPlaying()) startBgm();
   });

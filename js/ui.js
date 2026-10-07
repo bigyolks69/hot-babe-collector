@@ -1248,6 +1248,7 @@ function frameInner(dt) {
     drawTitle();
     if ((justPressed[" "] || justPressed["enter"]) && (heroSprites.ready || heroSprites.failed)) {
       startLevel(progress.level, { newRun: true });
+      // startLevel already calls startBgm; ensure context resume from this key gesture
       ensureAudio();
     }
     return;

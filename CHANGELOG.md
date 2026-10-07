@@ -28,6 +28,8 @@ No build step. Classic `<script>` tags (not ES modules) so offline `file://` kee
 Script load order (do not reorder): boot → audio → babes → input → cards → level → game → boss → update → ui → main.
 
 ## Recent changes
+- **BGM silent again (mobile/strict autoplay):** `fetchDecode` awaited `ensureAudio()`→`resume()` during preload; under autoplay that resume can hang forever so the buffer never loads (`wanted=true`, `starts=0`). Decode via `OfflineAudioContext` (no playback resume); add `touchstart` unlock; `startLevel` retries `startBgm`. Play timer unchanged. Cache `?v=bgmfix1`.
+
 - **Play timer:** cumulative MM:SS while in active play (pauses in Menu / win / death / overlays). HUD top-left under hearts; also on babe gallery + level-complete panel. Resets on title start and play-again from L1 after beating the game — not on level continue, R-replay mid-run, or checkpoint respawn. Cache `?v=playtimer1`.
 
 - **L4 polish (variation + look + babes on cracks):** mix 1/2/3 short cracked planks per gap (hop gaps when multiple); thin cracked dark underside ~1/4 (24px→6px visual, collision unchanged); bias L4 babe pickups onto breakable tops (jump-on then jump-up). Cache `?v=l4var1`.

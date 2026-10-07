@@ -63,6 +63,8 @@ function startLevel(n, opts) {
   // newRun: title start / play-again from L1 after beating the game
   if (opts && opts.newRun) resetPlayTimer();
   state = "play";
+  // Start / restart BGM if silent (first Start is a user gesture; unlock may have raced decode)
+  try { startBgm(); } catch (_) {}
 }
 // Win panel primary action: Level 1 → continue to Level 2; last level → back to Level 1
 function winContinue() {
