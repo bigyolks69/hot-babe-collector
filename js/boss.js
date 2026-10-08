@@ -1,7 +1,7 @@
 // Hot Babe Collector — boss.js
 // ---------- Gacha Machine Demon(s) ----------
 // L3 main: 3 HP, full kit, Rare+ reward. L5 mini: 2 HP, coins+one minion, normal pull.
-// L6 dual: two 3 HP demons, Rare+ when both down. Yellow failsafe ~12s on minion waves.
+// L6 dual: two 3 HP demons, Rare+ when both down. Yellow failsafe ~8s on minion waves.
 const BOSS_HP = 3;
 const BOSS_W = 4 * TILE;   // 128
 const BOSS_H = 6 * TILE;   // 192
@@ -12,7 +12,7 @@ const BOSS_MINION_N = [2, 3, 4];
 const BOSS_VULN = [1.6, 1.35, 1.15];
 const BOSS_HIT_STUN = 1.15;
 const BOSS_IDLE = [1.1, 0.85, 0.65];
-const BOSS_MINION_VULN_FAILSAFE = 12;
+const BOSS_MINION_VULN_FAILSAFE = 8;
 const BOSS_ATTACKS = ["beam", "coins", "minions"];
 const BOSS_EDGE_PAD = 220;
 
@@ -80,7 +80,7 @@ function makeBoss() {
     return createDemon({
       x, arenaL, arenaR, floorY, scale: 0.85, hp: 2,
       attacks: ["coins", "minions"], minionKind: "walker",
-      rareReward: false, failsafe: 10, label: "MINI GACHA DEMON",
+      rareReward: false, failsafe: 8, label: "MINI GACHA DEMON",
     });
   }
 
