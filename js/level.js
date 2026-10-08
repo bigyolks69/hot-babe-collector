@@ -206,7 +206,8 @@ function buildLevel(def, diff) {
     bossLockImmediate: !!def.bossLockImmediate, startMid: !!def.startMid,
     checkpoints: keptCps.map(c => ({ x: c.x * TILE, y: (c.yTile != null ? c.yTile : GROUND_Y) * TILE })),
     // Boss levels: the goal starts inactive (unlocked after the fight); arenaLeft = second checkpoint
-    goal: { x: (goalX != null ? goalX : width - 4) * TILE, y: (floorY - 3) * TILE, w: 20, h: 96, active: !def.boss },
+    // Goal pole sits on floorY; clamp so low roofs (L5 y=2) do not place the flag above world 0
+    goal: { x: (goalX != null ? goalX : width - 4) * TILE, y: Math.max(0, (floorY - 3) * TILE), w: 20, h: 96, active: !def.boss },
     arenaLeft: def.bossLockImmediate ? 0 : (def.boss && keptCps.length > 1 ? keptCps[1].x * TILE : (def.boss ? keptCps[0].x * TILE : null)),
   };
 }
