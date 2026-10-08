@@ -28,6 +28,8 @@ No build step. Classic `<script>` tags (not ES modules) so offline `file://` kee
 Script load order (do not reorder): boot → audio → babes → input → cards → level → game → boss → update → ui → main.
 
 ## Recent changes
+- **Timer hundredths + Collection Bonus line (timerbonus1):** play timer pill (HUD top-left, babe gallery, level-complete) now shows `M:SS` with smaller `.hh` hundredths on the same baseline (e.g. 3:07 + small .42); pill width reserves a fixed `.00` slot so it doesn't jitter. Babe gallery (mobile Menu + desktop C/P) adds a top-left line under the timer: `Collection Bonus: +14% speed, +10% jump` — % read live from `collectionMoveMul()` / `collectionJumpHeightMul()` (every 5 unique babes = +7% speed / +5% jump height, max 6 stacks); under 5 babes shows `0% speed, 0% jump`; all 30 appends `, Double Jump`. Clear of Reset / Refresh Cache / Go back to level 1. Cache `?v=timerbonus1`.
+
 - **Go back to level 1 (backl1):** gallery menu button under Refresh Cache (mobile Menu + desktop C/P). Keeps all babe collection progress; sends player to level 1 start; resets level progress + play timer like a fresh run. Does **not** wipe babes. Cache `?v=backl1`.
 
 - **Heart aura polish (heartaura1):** sky heart drop interval fixed to every **10s** (was 20–30 random). L4 Neon Overpass: ~**2 placed heart pickups** between each checkpoint (and last CP→goal) on solid ground/airwalks — not only sky drops; collect +1 when HP < max, respawn on death. Full-collection yellow SS aura draw height scaled to **70%** (30% shorter, width unchanged, feet-anchored; visual only). Cache `?v=heartaura1`.

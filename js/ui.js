@@ -314,28 +314,49 @@ function drawHudLiveBabes() {
 }
 
 
-/** Play-time readout — pixel/city-pop pill matching hearts / tray HUD. */
+/** Play-time readout — pixel/city-pop pill matching hearts / tray HUD.
+ *  M:SS in the main font, then smaller ".hh" hundredths on the same baseline. */
+function playTimerFonts(big) {
+  return big ? { main: "bold 18px sans-serif", small: "bold 12px sans-serif", px: 18, padX: 12, bh: 28, r: 8 }
+             : { main: "bold 13px sans-serif", small: "bold 9px sans-serif", px: 13, padX: 8, bh: 22, r: 6 };
+}
+function playTimerPillWidth(big) {
+  const f = playTimerFonts(!!big);
+  ctx.save();
+  ctx.font = f.main;
+  const mw = Math.ceil(ctx.measureText(formatPlayTime(playTimerMs)).width);
+  ctx.font = f.small;
+  const fw = Math.ceil(ctx.measureText(".00").width); // fixed slot so the pill doesn't jitter
+  ctx.restore();
+  return mw + 1 + fw + f.padX * 2;
+}
 function drawPlayTimer(x, y, opts) {
   const o = opts || {};
-  const label = formatPlayTime(playTimerMs);
   const big = !!o.big;
+  const f = playTimerFonts(big);
+  const label = formatPlayTime(playTimerMs);
+  const frac = formatPlayTimeHundredths(playTimerMs);
   ctx.save();
-  ctx.font = big ? "bold 18px sans-serif" : "bold 13px sans-serif";
-  const tw = Math.ceil(ctx.measureText(label).width);
-  const padX = big ? 12 : 8, padY = big ? 6 : 4;
-  const bw = tw + padX * 2, bh = big ? 28 : 22;
+  ctx.font = f.main;
+  const mm = ctx.measureText(label);
+  const mw = Math.ceil(mm.width);
+  const asc = mm.actualBoundingBoxAscent || f.px * 0.72; // digit cap height
+  const bw = playTimerPillWidth(big), bh = f.bh;
   ctx.fillStyle = "rgba(0,0,0,0.45)";
-  roundRect(x, y, bw, bh, big ? 8 : 6);
+  roundRect(x, y, bw, bh, f.r);
   ctx.fill();
   ctx.strokeStyle = "rgba(255,230,109,0.55)";
   ctx.lineWidth = 1.25;
-  roundRect(x, y, bw, bh, big ? 8 : 6);
+  roundRect(x, y, bw, bh, f.r);
   ctx.stroke();
+  const baseY = Math.round(y + bh / 2 + asc / 2);
   ctx.fillStyle = "#ffe66d";
   ctx.textAlign = "left";
-  ctx.textBaseline = "middle";
-  ctx.fillText(label, x + padX, y + bh / 2 + 0.5);
   ctx.textBaseline = "alphabetic";
+  ctx.fillText(label, x + f.padX, baseY);
+  ctx.font = f.small;
+  ctx.fillStyle = "rgba(255,230,109,0.85)";
+  ctx.fillText(frac, x + f.padX + mw + 1, baseY);
   ctx.restore();
   return { w: bw, h: bh };
 }
@@ -644,6 +665,11 @@ function drawCollection() {
 
   const unique = ownedUniqueCount(collection);
   drawPlayTimer(12, 10);
+  // Collection Bonus — top-left under the timer pill (clear of title, count, tabs + right-side buttons)
+  ctx.font = "bold 12px sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillStyle = collectionBuffStacks() > 0 ? "#9aefc4" : "#bbb";
+  ctx.fillText(collectionBonusText(), 14, 50);
   ctx.fillStyle = "#ff8ec8";
   ctx.font = "bold 26px sans-serif";
   ctx.textAlign = "center";
@@ -1068,10 +1094,7 @@ function drawWin() {
                    : "Big Salty Gaming Studio thanks you — Level " + (levelNum + 1) + " awaits", W / 2, 74);
 
   {
-    const label = formatPlayTime(playTimerMs);
-    ctx.font = "bold 18px sans-serif";
-    const tw = Math.ceil(ctx.measureText(label).width);
-    drawPlayTimer((W - (tw + 24)) / 2, 86, { big: true });
+    drawPlayTimer((W - playTimerPillWidth(true)) / 2, 86, { big: true });
   }
   if (winStats) {
     ctx.fillStyle = "#fff";

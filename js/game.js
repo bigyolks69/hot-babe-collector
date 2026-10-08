@@ -30,6 +30,11 @@ function formatPlayTime(ms) {
   const ss = s % 60;
   return m + ":" + (ss < 10 ? "0" : "") + ss;
 }
+// Split-second suffix drawn smaller after M:SS (e.g. ".42" hundredths)
+function formatPlayTimeHundredths(ms) {
+  const cs = Math.floor(Math.max(0, ms || 0) / 10) % 100;
+  return "." + (cs < 10 ? "0" : "") + cs;
+}
 let collection = loadCollection();
 
 // Mini tray: newest-first list of owned babes by latest acquisition (persisted)
@@ -95,6 +100,16 @@ function buffToastMessage(stacks) {
   const mv = Math.round(COLL_BUFF_MOVE_PER * stacks * 100);
   const jh = Math.round(COLL_BUFF_JUMP_H_PER * stacks * 100);
   return BUFF_TEXT + " (" + mv + "% faster, " + jh + "% higher jump)";
+}
+// Gallery "Collection Bonus" line — % read from the live multipliers (babes.js), not hard-coded.
+function collectionBonusText(col) {
+  col = col || collection;
+  const mv = Math.round((collectionMoveMul(col) - 1) * 100);
+  const jh = Math.round((collectionJumpHeightMul(col) - 1) * 100);
+  const pct = n => (n > 0 ? "+" : "") + n + "%";
+  let t = pct(mv) + " speed, " + pct(jh) + " jump";
+  if (ownedUniqueCount(col) >= BABE_POOL.length) t += ", Double Jump"; // same check as hasAllBabesAura()
+  return "Collection Bonus: " + t;
 }
 function showBuffToast() {
   buffToast = { t: 0, dur: BUFF_TOAST_DUR, text: buffToastMessage() };
