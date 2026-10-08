@@ -131,6 +131,17 @@ function resetBossFight() {
   }
 }
 
+
+// Dual arena wider than view: pick cameraX that shows both demons when they fit, else follow player.
+function dualFrameCameraX() {
+  if (!boss || !boss.dual) return Math.max(0, Math.min(player.x - W * 0.35, LEVEL_W * TILE - W));
+  const left = Math.min(boss.demons[0].x, boss.demons[1].x);
+  const right = Math.max(boss.demons[0].x + boss.demons[0].w, boss.demons[1].x + boss.demons[1].w);
+  const camMin = boss.arenaL, camMax = Math.max(camMin, boss.arenaR - W);
+  if (right - left <= W) return Math.max(camMin, Math.min(camMax, (left + right) / 2 - W / 2));
+  return Math.max(camMin, Math.min(camMax, player.x - W * 0.35));
+}
+
 function lockBossArena() {
   if (!boss) return;
   const locked = boss.dual ? boss.locked : boss.locked;
@@ -142,6 +153,7 @@ function lockBossArena() {
   if (boss.dual) boss.wallPlats = [left, right];
   else boss.wallPlats = [left, right];
   platforms.push(left, right);
+  if (boss.dual) cameraX = dualFrameCameraX(); // both demons on-screen at lock (L6)
   addCallout(boss.dual ? "DUAL GACHA DEMONS!" : (boss.label || "GACHA DEMON!"), "#ff5ec8");
   sfx.win();
 }

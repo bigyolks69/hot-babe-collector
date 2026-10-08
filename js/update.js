@@ -203,12 +203,17 @@ function updatePlay(dt) {
   updateFloatHeart(dt);
   updateHeartPickups(dt);
 
-  // camera (boss lock overrides the follow when the arena is sealed)
+  // camera (single-boss lock freezes X; dual arenas can be wider than the view — follow then clamp)
   const bossLocked = boss && (boss.dual ? boss.locked && !boss.defeated : boss.locked && !boss.defeated);
   if (!bossLocked) {
     const target = player.x - W * 0.38;
     cameraX += (target - cameraX) * Math.min(1, 6 * dt);
     cameraX = Math.max(0, Math.min(cameraX, LEVEL_W * TILE - W));
+  } else if (boss.dual) {
+    const camMin = boss.arenaL, camMax = Math.max(camMin, boss.arenaR - W);
+    const target = player.x - W * 0.38;
+    cameraX += (target - cameraX) * Math.min(1, 6 * dt);
+    cameraX = Math.max(camMin, Math.min(camMax, cameraX));
   } else {
     const camMin = boss.arenaL, camMax = Math.max(camMin, boss.arenaR - W);
     cameraX = Math.max(camMin, Math.min(camMax, cameraX));

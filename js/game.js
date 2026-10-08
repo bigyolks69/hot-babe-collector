@@ -312,7 +312,8 @@ let cameraY = 0;
 
 // Vertical camera: follow player, but L5 mini-boss sits partly above y=0.
 // During the top-deck fight, bias so demon body + jump arc sit under the HUD
-// (cameraY may go negative). Returns { ty, camMin }.
+// (cameraY may go negative). After mini defeat, keep roof-aware negative camMin
+// so the view does not snap to y=0 / empty deck grid. Returns { ty, camMin }.
 function verticalCamTarget() {
   let ty = player.y - H * 0.55;
   let camMin = 0;
@@ -327,6 +328,11 @@ function verticalCamTarget() {
     if (ty < keepPlayer) ty = keepPlayer;
     if (player.y - ty < hudClear) ty = player.y - hudClear;
     camMin = Math.min(0, top - hudClear - 8);
+  } else if (level && level.vertical && level.bossFloorY != null) {
+    // Roof stages after unlock/defeat: still allow negative camMin (fight bias used living boss)
+    const roofCam = level.bossFloorY * TILE - H * 0.55;
+    camMin = Math.min(0, roofCam);
+    if (player.y < (level.bossFloorY + 4) * TILE) camMin = Math.min(camMin, ty);
   }
   return { ty, camMin };
 }
@@ -592,7 +598,12 @@ function resetLevel(full) {
   player.onGround = false;
   player.coyote = 0; player.jumpBuf = 0; player.airJumpsUsed = 0; player.stun = 0; player.stompGrace = 0; player.fromStomp = false;
   player.prevX = player.x; player.prevY = player.y;
-  cameraX = Math.max(0, Math.min(player.x - W*0.35, LEVEL_W * TILE - W));
+  if (boss && boss.dual) {
+    // Frame both demons when they fit in one view (L6 arena > W); else follow player in arena
+    cameraX = dualFrameCameraX();
+  } else {
+    cameraX = Math.max(0, Math.min(player.x - W*0.35, LEVEL_W * TILE - W));
+  }
   if (level && level.vertical) {
     const vc = verticalCamTarget();
     const maxY = Math.max(0, LEVEL_H * TILE - H);

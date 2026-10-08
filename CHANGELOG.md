@@ -28,6 +28,8 @@ No build step. Classic `<script>` tags (not ES modules) so offline `file://` kee
 Script load order (do not reorder): boot → audio → babes → input → cards → level → game → boss → update → ui → main.
 
 ## Recent changes
+- **Boss camera (bosscam1):** L5 post–mini-boss — `verticalCamTarget()` keeps roof-aware negative `camMin` on vertical `bossFloorY` stages after defeat (was only while mini alive → cam snapped 0 / empty deck). L6 dual — follow player X while locked then clamp to arena; `dualFrameCameraX()` on reset/lock frames both demons (cameraX≈192 ∈ [164,220]). Failsafe 8s unchanged. Cache `?v=bosscam1`.
+
 - **Boss minion-wave failsafe 8s (bossfail8):** all capsule bosses (L3 main, L5 mini, L6 dual) yellow/vulnerable after **8s** in a minion wave (was 12s default / L5 mini 10s). Minion-clear still early-paths. Cache `?v=bossfail8`.
 
 - **L5 rooftop start (l5roof1):** Capsule Yard first entry softlock — spawn was ground CP `[2,15]` inside thick deck solid. Now starts on rooftop deck `cps[0]=[2,2]` (same y as `bossFloorY` / mini pad). Dropped buried climb ledges/enemies/picks; clean roof walk with 2 roof babes + 2 roof foes → mini pad. Mid-climb CP removed so `arenaLeft` is mini-pad CP (~768) — mini boss stays on-screen when arena locks (was off-screen at arenaLeft=352). Goal flag y clamped to ≥0 on low roofs. Cache `?v=l5roof1`.
