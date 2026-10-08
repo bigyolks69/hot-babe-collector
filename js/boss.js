@@ -132,13 +132,28 @@ function resetBossFight() {
 }
 
 
+// Dual arena wider than view: cameraX band where both alive demons are fully on-screen (Jackie: [164,220] on L6).
+// Returns null if dual framing does not apply (one/both down, or span > W).
+function dualFrameCameraBand() {
+  if (!boss || !boss.dual) return null;
+  const alive = boss.demons.filter(d => d && !d.defeated);
+  if (alive.length < 2) return null;
+  const left = Math.min(alive[0].x, alive[1].x);
+  const right = Math.max(alive[0].x + alive[0].w, alive[1].x + alive[1].w);
+  if (right - left > W) return null;
+  const camMin = boss.arenaL, camMax = Math.max(camMin, boss.arenaR - W);
+  const lo = Math.max(camMin, right - W);
+  const hi = Math.min(camMax, left);
+  if (lo > hi) return null;
+  return { lo, hi, left, right };
+}
+
 // Dual arena wider than view: pick cameraX that shows both demons when they fit, else follow player.
 function dualFrameCameraX() {
   if (!boss || !boss.dual) return Math.max(0, Math.min(player.x - W * 0.35, LEVEL_W * TILE - W));
-  const left = Math.min(boss.demons[0].x, boss.demons[1].x);
-  const right = Math.max(boss.demons[0].x + boss.demons[0].w, boss.demons[1].x + boss.demons[1].w);
+  const band = dualFrameCameraBand();
   const camMin = boss.arenaL, camMax = Math.max(camMin, boss.arenaR - W);
-  if (right - left <= W) return Math.max(camMin, Math.min(camMax, (left + right) / 2 - W / 2));
+  if (band) return Math.max(band.lo, Math.min(band.hi, (band.left + band.right) / 2 - W / 2));
   return Math.max(camMin, Math.min(camMax, player.x - W * 0.35));
 }
 

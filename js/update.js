@@ -211,7 +211,23 @@ function updatePlay(dt) {
     cameraX = Math.max(0, Math.min(cameraX, LEVEL_W * TILE - W));
   } else if (boss.dual) {
     const camMin = boss.arenaL, camMax = Math.max(camMin, boss.arenaR - W);
-    const target = player.x - W * 0.38;
+    let target = player.x - W * 0.38;
+    // While both demons fit in W, keep follow target in the dual-frame band so idle mid
+    // does not lerp toward player and clip the left demon. Allow leaving the band only
+    // when the player walks toward a side that needs more room (past the always-visible strip).
+    const band = dualFrameCameraBand();
+    if (band) {
+      const px = player.x + player.w / 2;
+      const safeL = band.hi;       // leftmost x visible at every dual-frame cam
+      const safeR = band.lo + W;   // rightmost x visible at every dual-frame cam
+      if (px < safeL) {
+        // toward / past left demon — may clip R to give L fight room
+      } else if (px > safeR) {
+        // toward / past right demon — may clip L
+      } else {
+        target = Math.max(band.lo, Math.min(band.hi, target));
+      }
+    }
     cameraX += (target - cameraX) * Math.min(1, 6 * dt);
     cameraX = Math.max(camMin, Math.min(camMax, cameraX));
   } else {
