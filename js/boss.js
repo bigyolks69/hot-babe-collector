@@ -37,7 +37,9 @@ function createDemon(opts) {
     x: opts.x, y: floor - h, w, h, hp, maxHp: hp,
     phase: 0, mode: "idle", modeT: 0, nextAtk: 0, lastAtk: null,
     arenaL: opts.arenaL, arenaR: opts.arenaR,
+    // Local crank sits on the sprite's left; flipX mirrors draw + world crank to the right
     crank: { ox: Math.round(18 * scale), oy: h - Math.round(70 * scale), w: BOSS_CRANK_W, h: BOSS_CRANK_H },
+    flipX: !!opts.flipX,
     beam: null, coins: [], minions: [],
     caps: makeDemonCaps(), t: 0, shake: 0, flash: 0, grin: 0,
     rewardPending: false, defeated: false, domeBroken: false,
@@ -58,9 +60,10 @@ function makeBoss() {
 
   if (kind === "dual") {
     // Full arena; left matches right edge pad so crank-side jump isn't wall-cramped
+    // Left demon mirrored: crank + summons face center (between the pair)
     const left = createDemon({
       x: arenaL + BOSS_EDGE_PAD, arenaL, arenaR, floorY,
-      hp: BOSS_HP, rareReward: false, label: "GACHA DEMON L",
+      hp: BOSS_HP, rareReward: false, label: "GACHA DEMON L", flipX: true,
     });
     const right = createDemon({
       x: arenaR - BOSS_W - BOSS_EDGE_PAD, arenaL, arenaR, floorY,
@@ -102,7 +105,9 @@ function bossCrankRect(d) {
   d = d || (boss && !boss.dual ? boss : null);
   if (!d || d.dual) return { x: 0, y: 0, w: 0, h: 0 };
   const c = d.crank;
-  return { x: d.x + c.ox, y: d.y + c.oy, w: c.w, h: c.h };
+  // flipX: local left crank mirrors to the demon's right (inner side for L6 left boss)
+  const ox = d.flipX ? (d.w - c.ox - c.w) : c.ox;
+  return { x: d.x + ox, y: d.y + c.oy, w: c.w, h: c.h };
 }
 
 function resetBossFight() {
@@ -182,6 +187,21 @@ function pickBossAttack(d) {
   return opts[Math.floor(Math.random() * opts.length)];
 }
 
+// Minion patrol band: toward the demon's front. Dual pair → between the two bosses.
+function demonSummonBand(d) {
+  if (boss && boss.dual) {
+    const other = boss.demons.find(x => x && x !== d);
+    if (d.flipX) {
+      const maxX = other ? other.x - 8 : d.arenaR - 8;
+      return { minX: d.x + d.w + 8, maxX };
+    }
+    const minX = other ? other.x + other.w + 8 : d.arenaL + 8;
+    return { minX, maxX: d.x - 8 };
+  }
+  if (d.flipX) return { minX: d.x + d.w + 8, maxX: d.arenaR - 8 };
+  return { minX: d.arenaL + 8, maxX: d.x - 8 };
+}
+
 function beginBossAttack(kind, d) {
   d = d || (boss && !boss.dual ? boss : null);
   if (!d || d.dual) return;
@@ -196,7 +216,8 @@ function beginBossAttack(kind, d) {
     const n = BOSS_COIN_N[Math.min(2, bossPhaseOf(d))];
     d.coins = [];
     for (let i = 0; i < n; i++) {
-      const cx = d.x + 20, cy = d.y + 90 * (d.scale || 1);
+      const cx = d.flipX ? d.x + d.w - 20 : d.x + 20;
+      const cy = d.y + 90 * (d.scale || 1);
       const tx = player.x + player.w / 2 + (i - (n - 1) / 2) * 50;
       const dx = tx - cx, dy = (floorY * TILE - 20) - cy;
       const tt = 0.95 + i * 0.08;
@@ -208,10 +229,16 @@ function beginBossAttack(kind, d) {
     const ph = bossPhaseOf(d);
     const n = Math.max(1, Math.min(BOSS_MINION_N[ph], d.minionKind === "both" ? BOSS_MINION_N[ph] : Math.max(1, BOSS_MINION_N[ph] - 1)));
     const sp = (level && level.diff && level.diff.enemySpeed) || 1;
-    const minX = d.arenaL + 8, maxX = d.x - 8;
+    const band = demonSummonBand(d);
+    let minX = band.minX, maxX = band.maxX;
+    if (maxX - minX < 40) { // tiny gap fallback
+      minX = Math.min(minX, maxX - 40);
+      maxX = Math.max(maxX, minX + 40);
+    }
     for (let i = 0; i < n; i++) {
       let hop = d.minionKind === "hopper" ? true : d.minionKind === "walker" ? false : (i % 2 === 1);
-      const mxTile = (d.arenaL + 40 + i * 70) / TILE;
+      const span = Math.max(8, maxX - minX);
+      const mxTile = (minX + 24 + i * Math.min(70, span / Math.max(1, n))) / TILE;
       const e = enemyOnPlat(hop ? "hopper" : "walker", mxTile, floorY, hop ? 26 : 28, hop ? 26 : 28, {
         vx: (hop ? 40 : 55 + ph * 10) * sp,
         dir: Math.random() < 0.5 ? -1 : 1,
@@ -412,7 +439,29 @@ function drawBoss() {
 function drawOneDemon(boss) {
   if (!boss || boss.dual) return;
   const sk = boss.shake > 0 ? (Math.random() - 0.5) * 10 * Math.min(1, boss.shake) : 0;
-  const bx = Math.round(boss.x + sk), by = Math.round(boss.y + sk * 0.4);
+  const bx0 = Math.round(boss.x + sk), by = Math.round(boss.y + sk * 0.4);
+  const flip = !!boss.flipX;
+  const vuln = boss.mode === "vulnerable";
+  const stun = boss.mode === "stunned";
+  const wrecked = !!(boss.domeBroken || boss.mode === "defeat" || boss.mode === "done");
+
+  // Falling capsules are world-space — draw outside the flip transform
+  if (wrecked) {
+    for (const c of boss.caps) {
+      if (!c.falling || c.wy > GROUND_Y * TILE + 40) continue;
+      ctx.save(); ctx.translate(c.wx, c.wy); ctx.rotate(c.spin || 0);
+      ctx.fillStyle = c.col;
+      ctx.beginPath(); ctx.ellipse(0, 0, 9, 11, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.5)"; ctx.lineWidth = 1; ctx.stroke();
+      const babe = babeById(c.id);
+      if (babe) drawCard(babe, -7.5, -10, 15, 20, { iconOnly: true });
+      ctx.restore();
+    }
+  }
+
+  ctx.save();
+  if (flip) { ctx.translate(bx0 + boss.w, 0); ctx.scale(-1, 1); }
+  const bx = flip ? 0 : bx0;
   // Body cabinet
   const body = ctx.createLinearGradient(bx, by + 50, bx + boss.w, by + boss.h);
   body.addColorStop(0, "#2a1040"); body.addColorStop(0.5, "#5a1a6a"); body.addColorStop(1, "#1a0a30");
@@ -437,7 +486,6 @@ function drawOneDemon(boss) {
   ctx.fillStyle = "#ffe66d"; ctx.fillRect(bx + 14, by + boss.h - 18, boss.w - 28, 4);
   // Glass dome (intact) or shattered wreck on defeat
   const dx = bx + boss.w / 2, dy = by + 58, rx = 46, ry = 52;
-  const wrecked = !!(boss.domeBroken || boss.mode === "defeat" || boss.mode === "done");
   if (!wrecked) {
     ctx.beginPath(); ctx.ellipse(dx, dy, rx, ry, 0, Math.PI, 0); ctx.closePath();
     ctx.fillStyle = "rgba(180,220,255,0.22)"; ctx.fill();
@@ -472,16 +520,6 @@ function drawOneDemon(boss) {
     ctx.fillRect(bx + 18, by + 70, boss.w - 36, 8);
     ctx.fillStyle = "#3a2030";
     roundRect(bx + 20, by + 150, 36, 22, 4); ctx.fill();
-    for (const c of boss.caps) {
-      if (!c.falling || c.wy > GROUND_Y * TILE + 40) continue;
-      ctx.save(); ctx.translate(c.wx, c.wy); ctx.rotate(c.spin || 0);
-      ctx.fillStyle = c.col;
-      ctx.beginPath(); ctx.ellipse(0, 0, 9, 11, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = "rgba(255,255,255,0.5)"; ctx.lineWidth = 1; ctx.stroke();
-      const babe = babeById(c.id);
-      if (babe) drawCard(babe, -7.5, -10, 15, 20, { iconOnly: true });
-      ctx.restore();
-    }
   }
   // Demon face (stunned = cyan/white, vulnerable = dim, else hostile red)
   const stunned = boss.mode === "stunned";
@@ -505,37 +543,40 @@ function drawOneDemon(boss) {
   ctx.fillStyle = "#6a2a80";
   roundRect(bx - 6, by + 130, 18, 40, 6); ctx.fill();
   roundRect(bx + boss.w - 12, by + 130, 18, 40, 6); ctx.fill();
-  // Crank / weak point
-  const cr = bossCrankRect(boss);
-  const vuln = boss.mode === "vulnerable";
-  const stun = boss.mode === "stunned";
+  // Crank / weak point (local left; flipX mirrors it to the right in world space)
+  const cLocal = boss.crank;
+  const crx = bx + cLocal.ox, cry = by + cLocal.oy;
   ctx.fillStyle = stun ? "#ffffff" : vuln ? "#ffe66d" : "#ff5ec8";
-  ctx.beginPath(); ctx.arc(cr.x + cr.w / 2 + sk, cr.y + cr.h / 2, cr.w / 2, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(crx + cLocal.w / 2, cry + cLocal.h / 2, cLocal.w / 2, 0, Math.PI * 2); ctx.fill();
   ctx.strokeStyle = vuln ? "#fff" : "#5ef0ff"; ctx.lineWidth = vuln ? 3 : 2; ctx.stroke();
   ctx.fillStyle = "#2a1040";
-  ctx.fillRect(cr.x + cr.w / 2 - 3 + sk, cr.y + 4, 6, cr.h - 8);
-  ctx.fillRect(cr.x + 4 + sk, cr.y + cr.h / 2 - 3, cr.w - 8, 6);
+  ctx.fillRect(crx + cLocal.w / 2 - 3, cry + 4, 6, cLocal.h - 8);
+  ctx.fillRect(crx + 4, cry + cLocal.h / 2 - 3, cLocal.w - 8, 6);
   if (vuln) {
     ctx.fillStyle = "rgba(255,230,109,0.35)";
-    ctx.beginPath(); ctx.arc(cr.x + cr.w / 2 + sk, cr.y + cr.h / 2, cr.w / 2 + 6 + Math.sin(boss.t * 10) * 2, 0, Math.PI * 2); ctx.fill();
-    // Smoke puffs
+    ctx.beginPath(); ctx.arc(crx + cLocal.w / 2, cry + cLocal.h / 2, cLocal.w / 2 + 6 + Math.sin(boss.t * 10) * 2, 0, Math.PI * 2); ctx.fill();
     for (let i = 0; i < 4; i++) {
       const sx = bx + 30 + i * 22 + Math.sin(boss.t * 3 + i) * 4;
       const sy = by + 40 - (boss.modeT * 30 + i * 8) % 50;
       ctx.fillStyle = `rgba(180,180,200,${0.35 - (sy < by ? 0.2 : 0)})`;
       ctx.beginPath(); ctx.arc(sx, sy, 8 + i, 0, Math.PI * 2); ctx.fill();
     }
+  }
+  // Nameplate backing (label text drawn unflipped below)
+  ctx.fillStyle = "rgba(0,0,0,0.55)"; roundRect(bx + 16, by + boss.h - 36, boss.w - 32, 18, 4); ctx.fill();
+  ctx.restore();
+
+  // Unflipped HUD text (readable when flipX)
+  if (vuln) {
     ctx.fillStyle = "#ffe66d"; ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
-    ctx.fillText("OUT OF ORDER", bx + boss.w / 2, by + 160);
+    ctx.fillText("OUT OF ORDER", bx0 + boss.w / 2, by + 160);
   }
   if (stun) {
     ctx.fillStyle = "#5ef0ff"; ctx.font = "bold 12px sans-serif"; ctx.textAlign = "center";
-    ctx.fillText("STUNNED", bx + boss.w / 2, by + 160);
+    ctx.fillText("STUNNED", bx0 + boss.w / 2, by + 160);
   }
-  // Nameplate
-  ctx.fillStyle = "rgba(0,0,0,0.55)"; roundRect(bx + 16, by + boss.h - 36, boss.w - 32, 18, 4); ctx.fill();
   ctx.fillStyle = stun ? "#5ef0ff" : "#ff8ec8"; ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
-  ctx.fillText(boss.label || "GACHA MACHINE DEMON", bx + boss.w / 2, by + boss.h - 23);
+  ctx.fillText(boss.label || "GACHA MACHINE DEMON", bx0 + boss.w / 2, by + boss.h - 23);
 
   // Beam telegraph / fire
   if (boss.beam) {

@@ -258,7 +258,11 @@ function drawHudLiveBabes() {
   const portrait = window.innerHeight > window.innerWidth;
   const lift = isTouch ? (portrait ? 78 : 130) : 18;
   const panelX = W - panelW - margin;
-  const panelY = H - panelH - lift - (n ? 0 : ch + pad);
+  // L6 dual fight: park tray top-right (under HP bar, clear of both demons) so the right boss isn't covered
+  const dualFight = !!(boss && boss.dual && boss.locked && !boss.defeated && state === "play");
+  const panelY = dualFight
+    ? 68
+    : (H - panelH - lift - (n ? 0 : ch + pad));
   const step = cw + gap;
   hudTrayHit = { x: panelX, y: panelY, w: panelW, h: panelH };
 

@@ -28,6 +28,8 @@ No build step. Classic `<script>` tags (not ES modules) so offline `file://` kee
 Script load order (do not reorder): boot → audio → babes → input → cards → level → game → boss → update → ui → main.
 
 ## Recent changes
+- **L6 dual boss layout (l6bossflip1):** Left Gacha Demon mirrored (`flipX`) — weak-point crank on its right (inner) side; minion/coin summons spawn between the two demons. Babe tray moves to top-right while the dual fight is locked so it no longer covers the right demon (3:4 card proportions unchanged; click-to-open Collection kept). Cache `?v=l6bossflip1`.
+
 - **Boss camera dual idle (bosscam2):** L6 while dual-locked — clamp follow target into `dualFrameCameraBand()` (both demons fully on-screen; Jackie ≈[164,220]) so idle mid no longer lerps cam→~298 and clips left (~39%). Leave the band only when player walks past the always-visible strip toward a demon that needs more room (walk-left → camMin still OK). L5 roof post-defeat unchanged. Failsafe 8s unchanged. Cache `?v=bosscam2`.
 
 - **Boss camera (bosscam1):** L5 post–mini-boss — `verticalCamTarget()` keeps roof-aware negative `camMin` on vertical `bossFloorY` stages after defeat (was only while mini alive → cam snapped 0 / empty deck). L6 dual — follow player X while locked then clamp to arena; `dualFrameCameraX()` on reset/lock frames both demons (cameraX≈192 ∈ [164,220]). Failsafe 8s unchanged. Cache `?v=bosscam1`.
