@@ -28,6 +28,8 @@ No build step. Classic `<script>` tags (not ES modules) so offline `file://` kee
 Script load order (do not reorder): boot → audio → babes → input → cards → level → game → boss → update → ui → main.
 
 ## Recent changes
+- **Ending quote (ending3):** Pink beat-game line is now “Your Hot Babes bring fulfillment…” (wrapped). Cache `?v=ending3`.
+
 - **Ending cheer (ending2):** Beat-game win adds “YOU DEED EEET! YOU BEAT DA GAAAAMMM!” above the weekend line. Cache `?v=ending2`.
 
 - **Beat-game ending (ending1):** Level 6 win overlay shows Card nest (`art/ending/ending_v2_card_nest.jpg`) plus “You collected the babes. The babes collected your weekends.” Mid-level complete panel unchanged. Cache `?v=ending1`.

@@ -1121,10 +1121,20 @@ function drawWin() {
     ctx.font = "bold 20px sans-serif";
     ctx.fillText(ENDING_LINE1, W / 2, iy + ih + 26);
     ctx.fillStyle = "#ff8ec8";
-    ctx.font = "bold 16px sans-serif";
-    ctx.fillText(ENDING_LINE2, W / 2, iy + ih + 50);
+    ctx.font = "bold 15px sans-serif";
+    const maxLineW = W - 48;
+    const words = ENDING_LINE2.split(" ");
+    let line = "", lines = [];
+    for (const w of words) {
+      const trial = line ? line + " " + w : w;
+      if (ctx.measureText(trial).width > maxLineW && line) { lines.push(line); line = w; }
+      else line = trial;
+    }
+    if (line) lines.push(line);
+    let ty = iy + ih + 48;
+    for (const L of lines) { ctx.fillText(L, W / 2, ty); ty += 20; }
 
-    drawPlayTimer((W - playTimerPillWidth(true)) / 2, iy + ih + 70, { big: true });
+    drawPlayTimer((W - playTimerPillWidth(true)) / 2, ty + 14, { big: true });
 
     ctx.fillStyle = "#ffe66d";
     ctx.font = "bold 16px sans-serif";

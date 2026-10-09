@@ -71,7 +71,7 @@ congratsImg.src = CONGRATS_IMG_SRC;
 
 // Beat-game ending (Level 6 win) — Card nest (Iris / locked by Big Yolks)
 const ENDING_LINE1 = "YOU DEED EEET! YOU BEAT DA GAAAAMMM!";
-const ENDING_LINE2 = "You collected the babes. The babes collected your weekends.";
+const ENDING_LINE2 = "Your Hot Babes bring fulfillment to your life like no one else can. You have reached the pinnacle of joy, meaning and purpose.";
 const ENDING_LINE = ENDING_LINE2; // legacy alias
 const ENDING_IMG_SRC = "art/ending/ending_v2_card_nest.jpg"; // 1280×720
 const endingImg = new Image();
