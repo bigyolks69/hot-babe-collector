@@ -77,6 +77,14 @@ const ENDING_IMG_SRC = "art/ending/ending_v2_card_nest.jpg"; // 1280×720
 const endingImg = new Image();
 endingImg.onerror = () => console.warn("[HBC] ending pic failed: " + ENDING_IMG_SRC);
 endingImg.src = ENDING_IMG_SRC;
+
+// Public social (SaltyBro) — tappable on title, ending, and gallery menu
+const SOCIAL_X_URL = "https://x.com/Saltybro333";
+const SOCIAL_X_LABEL = "X · @Saltybro333";
+function openXProfile() {
+  try { window.open(SOCIAL_X_URL, "_blank", "noopener,noreferrer"); } catch (e) {}
+}
+
 let collectionCompleteFlag = false;
 try { collectionCompleteFlag = localStorage.getItem(COMPLETE_KEY) === "1"; } catch (e) {}
 let congrats = null; // { t, sparks }

@@ -79,11 +79,13 @@ function handleCanvasTap(sx, sy) {
   if (performance.now() - congratsClosedAt < 300) return; // the dismissing tap does nothing else
   if (tryTrayOpenCollection(sx, sy)) return;
   if (state === "title") {
+    if (hitXLink(sx, sy, "title")) { openXProfile(); return; }
     if (!heroSprites.ready && !heroSprites.failed) return;
     startLevel(progress.level, { newRun: true });
     return;
   }
   if (state === "win") {
+    if (winStats && winStats.final && hitXLink(sx, sy, "ending")) { openXProfile(); return; }
     winContinue();
     return;
   }

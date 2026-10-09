@@ -575,6 +575,7 @@ function handleGalleryClick(sx, sy) {
     else if (hit(L.cancelBtn)) cancelResetConfirm();
     return;
   }
+  if (hitXLink(sx, sy, "gallery")) { openXProfile(); return; }
   // Gallery "Reset" / "Refresh Cache" buttons
   const rb = galleryResetBtn();
   if (sx >= rb.x && sx <= rb.x + rb.w && sy >= rb.y && sy <= rb.y + rb.h) {
@@ -720,6 +721,7 @@ function drawCollection() {
     ctx.fillText(label, bx + 7, by + 12);
     ctx.textAlign = "center";
   }
+  drawXLink("gallery");
   ctx.font = "11px sans-serif";
   ctx.fillStyle = "#888";
   ctx.fillText("Reset collection clears babes  ·  C / Esc close  ·  Wheel / arrows scroll  ·  1–6 filters", W / 2, H - 10);
@@ -828,6 +830,42 @@ function drawCollection() {
   }
 }
 
+
+function xLinkLayout(kind) {
+  // kind: "title" | "ending" | "gallery"
+  ctx.save();
+  ctx.font = kind === "gallery" ? "bold 13px sans-serif" : "bold 14px sans-serif";
+  const tw = Math.ceil(ctx.measureText(SOCIAL_X_LABEL).width);
+  ctx.restore();
+  const padX = 14, padY = 8, h = 28, w = tw + padX * 2;
+  let x = (W - w) / 2, y;
+  if (kind === "title") y = 250;
+  else if (kind === "ending") y = H - 72;
+  else y = H - 42; // gallery menu footer
+  return { x, y, w, h, kind };
+}
+function drawXLink(kind) {
+  const b = xLinkLayout(kind);
+  ctx.save();
+  ctx.fillStyle = "rgba(29,155,240,0.28)";
+  roundRect(b.x, b.y, b.w, b.h, 10); ctx.fill();
+  ctx.strokeStyle = "rgba(29,155,240,0.9)";
+  ctx.lineWidth = 1.5;
+  roundRect(b.x, b.y, b.w, b.h, 10); ctx.stroke();
+  ctx.fillStyle = "#1DA1F2";
+  ctx.font = kind === "gallery" ? "bold 13px sans-serif" : "bold 14px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(SOCIAL_X_LABEL, b.x + b.w / 2, b.y + b.h / 2 + 1);
+  ctx.textBaseline = "alphabetic";
+  ctx.restore();
+  return b;
+}
+function hitXLink(sx, sy, kind) {
+  const b = xLinkLayout(kind);
+  return sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h;
+}
+
 function drawTitle() {
   drawBackground();
   // decorative cards
@@ -845,6 +883,7 @@ function drawTitle() {
   ctx.fillStyle = "#ffb0d0";
   ctx.font = "18px sans-serif";
   ctx.fillText("Big Salty Gaming Studio", W/2, 236);
+  drawXLink("title");
 
   ctx.fillStyle = "#fff";
   ctx.font = "16px sans-serif";
@@ -1135,6 +1174,8 @@ function drawWin() {
     for (const L of lines) { ctx.fillText(L, W / 2, ty); ty += 20; }
 
     drawPlayTimer((W - playTimerPillWidth(true)) / 2, ty + 14, { big: true });
+
+    drawXLink("ending");
 
     ctx.fillStyle = "#ffe66d";
     ctx.font = "bold 16px sans-serif";

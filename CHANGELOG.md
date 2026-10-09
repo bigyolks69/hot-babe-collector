@@ -28,6 +28,8 @@ No build step. Classic `<script>` tags (not ES modules) so offline `file://` kee
 Script load order (do not reorder): boot → audio → babes → input → cards → level → game → boss → update → ui → main.
 
 ## Recent changes
+- **X link (xlink1):** Tappable `X · @Saltybro333` on title, beat-game ending, and gallery/Menu (pause). Opens https://x.com/Saltybro333. Cache `?v=xlink1`.
+
 - **Repo home:** game now lives at [saltybro333/hot-babe-collector](https://github.com/saltybro333/hot-babe-collector); live Pages [saltybro333.github.io/hot-babe-collector](https://saltybro333.github.io/hot-babe-collector/). Old `bigyolks69` remote kept as `bigyolks69` for reference.
 
 - **Ending quote (ending3):** Pink beat-game line is now “Your Hot Babes bring fulfillment…” (wrapped). Cache `?v=ending3`.
