@@ -1117,11 +1117,14 @@ function drawWin() {
       ctx.fillText("…", W / 2, iy + ih / 2);
     }
 
+    ctx.fillStyle = "#ffe66d";
+    ctx.font = "bold 20px sans-serif";
+    ctx.fillText(ENDING_LINE1, W / 2, iy + ih + 26);
     ctx.fillStyle = "#ff8ec8";
-    ctx.font = "bold 18px sans-serif";
-    ctx.fillText(ENDING_LINE, W / 2, iy + ih + 28);
+    ctx.font = "bold 16px sans-serif";
+    ctx.fillText(ENDING_LINE2, W / 2, iy + ih + 50);
 
-    drawPlayTimer((W - playTimerPillWidth(true)) / 2, iy + ih + 48, { big: true });
+    drawPlayTimer((W - playTimerPillWidth(true)) / 2, iy + ih + 70, { big: true });
 
     ctx.fillStyle = "#ffe66d";
     ctx.font = "bold 16px sans-serif";
