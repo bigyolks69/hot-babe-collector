@@ -1087,15 +1087,58 @@ function drawDead() {
 function drawWin() {
   ctx.fillStyle = "rgba(10,5,30,0.85)";
   ctx.fillRect(0, 0, W, H);
+  const fin = !winStats || winStats.final;
+
+  if (fin) {
+    // Beat-game ending: picture + one line (Card nest)
+    ctx.fillStyle = "#ffe66d";
+    ctx.font = "bold 32px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("You beat the game!", W / 2, 40);
+
+    const marginX = 40, top = 56, bottomReserve = 100;
+    const imgAreaW = W - marginX * 2;
+    const imgAreaH = H - top - bottomReserve;
+    const AR = 16 / 9;
+    let iw = imgAreaW, ih = iw / AR;
+    if (ih > imgAreaH) { ih = imgAreaH; iw = ih * AR; }
+    const ix = (W - iw) / 2, iy = top + Math.max(0, (imgAreaH - ih) / 2) * 0.35;
+
+    if (imgOk(endingImg)) {
+      ctx.drawImage(endingImg, ix, iy, iw, ih);
+      ctx.strokeStyle = "rgba(255,230,109,0.85)";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(ix - 0.5, iy - 0.5, iw + 1, ih + 1);
+    } else {
+      ctx.fillStyle = "#2a1040";
+      ctx.fillRect(ix, iy, iw, ih);
+      ctx.fillStyle = "#ff8ec8";
+      ctx.font = "bold 16px sans-serif";
+      ctx.fillText("…", W / 2, iy + ih / 2);
+    }
+
+    ctx.fillStyle = "#ff8ec8";
+    ctx.font = "bold 18px sans-serif";
+    ctx.fillText(ENDING_LINE, W / 2, iy + ih + 28);
+
+    drawPlayTimer((W - playTimerPillWidth(true)) / 2, iy + ih + 48, { big: true });
+
+    ctx.fillStyle = "#ffe66d";
+    ctx.font = "bold 16px sans-serif";
+    ctx.fillText(isTouch ? "Tap to play again from Level 1" : "Press Enter to play again from Level 1", W / 2, H - 36);
+    ctx.fillStyle = "#aaa";
+    ctx.font = "13px sans-serif";
+    ctx.fillText(isTouch ? "Open Menu to view your babes" : "Press C to view full babe gallery", W / 2, H - 16);
+    return;
+  }
+
   ctx.fillStyle = "#ffe66d";
   ctx.font = "bold 36px sans-serif";
   ctx.textAlign = "center";
-  const fin = !winStats || winStats.final;
-  ctx.fillText(fin ? "You beat the game!" : "Level " + levelNum + " Complete!", W / 2, 48);
+  ctx.fillText("Level " + levelNum + " Complete!", W / 2, 48);
   ctx.fillStyle = "#ff8ec8";
   ctx.font = "15px sans-serif";
-  ctx.fillText(fin ? "All " + LEVELS.length + " levels cleared — Big Salty Gaming Studio thanks you"
-                   : "Big Salty Gaming Studio thanks you — Level " + (levelNum + 1) + " awaits", W / 2, 74);
+  ctx.fillText("Big Salty Gaming Studio thanks you — Level " + (levelNum + 1) + " awaits", W / 2, 74);
 
   {
     drawPlayTimer((W - playTimerPillWidth(true)) / 2, 86, { big: true });
@@ -1151,12 +1194,12 @@ function drawWin() {
   ctx.fillStyle = "#ffe66d";
   ctx.font = "bold 16px sans-serif";
   ctx.textAlign = "center";
-  if (fin) ctx.fillText(isTouch ? "Tap to play again from Level 1" : "Press Enter to play again from Level 1", W / 2, H - 48);
-  else ctx.fillText(isTouch ? "Tap to continue to Level " + (levelNum + 1) : "Press Enter to continue to Level " + (levelNum + 1) + "  ·  R to replay", W / 2, H - 48);
+  ctx.fillText(isTouch ? "Tap to continue to Level " + (levelNum + 1) : "Press Enter to continue to Level " + (levelNum + 1) + "  ·  R to replay", W / 2, H - 48);
   ctx.fillStyle = "#aaa";
   ctx.font = "13px sans-serif";
   ctx.fillText(isTouch ? "Open Menu to view your babes" : "Press C to view full babe gallery", W / 2, H - 26);
 }
+
 
 function frame(dt) {
   // Reset confirm pauses the whole game (including congrats / death / boss / slots) and sits on top.

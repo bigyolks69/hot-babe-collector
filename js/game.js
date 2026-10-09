@@ -68,6 +68,13 @@ const CONGRATS_IMG_SRC = "art/ui/congrats_all30.jpg"; // Iris all-30 group pic (
 const congratsImg = new Image();
 congratsImg.onerror = () => console.warn("[HBC] congrats group pic failed: " + CONGRATS_IMG_SRC);
 congratsImg.src = CONGRATS_IMG_SRC;
+
+// Beat-game ending (Level 6 win) — Card nest (Iris / locked by Big Yolks)
+const ENDING_LINE = "You collected the babes. The babes collected your weekends.";
+const ENDING_IMG_SRC = "art/ending/ending_v2_card_nest.jpg"; // 1280×720
+const endingImg = new Image();
+endingImg.onerror = () => console.warn("[HBC] ending pic failed: " + ENDING_IMG_SRC);
+endingImg.src = ENDING_IMG_SRC;
 let collectionCompleteFlag = false;
 try { collectionCompleteFlag = localStorage.getItem(COMPLETE_KEY) === "1"; } catch (e) {}
 let congrats = null; // { t, sparks }

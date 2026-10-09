@@ -233,6 +233,10 @@ audio/**
 !art/ui/
 !art/ui/congrats_all30.jpg
 
+# Beat-game ending (Card nest — locked)
+!art/ending/
+!art/ending/ending_v2_card_nest.jpg
+
 # Super Saiyan aura (all-30 unlock) — 6 loop frames only (aura_ss_* renames break sticky mobile cache)
 !art/vfx/
 !art/vfx/aura/
