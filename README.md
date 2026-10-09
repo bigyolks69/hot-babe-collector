@@ -2,7 +2,7 @@
 
 **Big Salty Gaming Studio** — prototype side-scrolling platformer.
 
-Open `index.html` in Chrome or Safari (double-click / `file://` works offline), or use GitHub Pages: https://bigyolks69.github.io/hot-babe-collector/
+Open `index.html` in Chrome or Safari (double-click / `file://` works offline), or use GitHub Pages: https://saltybro333.github.io/hot-babe-collector/
 
 No build step or CDN. Scripts load as classic globals (see `CHANGELOG.md` for layout). Edit the relevant `js/*.js` file — not one mega HTML.
 

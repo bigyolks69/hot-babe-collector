@@ -2,7 +2,7 @@
 
 ## How to run
 
-- **Live (GitHub Pages):** https://bigyolks69.github.io/hot-babe-collector/
+- **Live (GitHub Pages):** https://saltybro333.github.io/hot-babe-collector/
 - **Local:** open `index.html` in Chrome/Safari (double-click / `file://` works), or `python3 -m http.server` from this folder and visit `http://localhost:8000/`
 
 No build step. Classic `<script>` tags (not ES modules) so offline `file://` keeps working.
@@ -28,6 +28,8 @@ No build step. Classic `<script>` tags (not ES modules) so offline `file://` kee
 Script load order (do not reorder): boot → audio → babes → input → cards → level → game → boss → update → ui → main.
 
 ## Recent changes
+- **Repo home:** game now lives at [saltybro333/hot-babe-collector](https://github.com/saltybro333/hot-babe-collector); live Pages [saltybro333.github.io/hot-babe-collector](https://saltybro333.github.io/hot-babe-collector/). Old `bigyolks69` remote kept as `bigyolks69` for reference.
+
 - **Ending quote (ending3):** Pink beat-game line is now “Your Hot Babes bring fulfillment…” (wrapped). Cache `?v=ending3`.
 
 - **Ending cheer (ending2):** Beat-game win adds “YOU DEED EEET! YOU BEAT DA GAAAAMMM!” above the weekend line. Cache `?v=ending2`.
