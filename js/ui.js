@@ -806,22 +806,23 @@ function drawCollection() {
       ctx.fillStyle = "rgba(0,0,0,0.65)";
       ctx.fillRect(0, 0, W, H);
       const dw = 220, dh = cardHeight(dw); // uses lg 440 art (smoothed downscale)
-      const dx = (W - dw) / 2, dy = 90;
+      const dx = (W - dw) / 2, dy = 72; // nudged up so name/rarity clear Close at H-90
       drawCard(babe, dx, dy, dw, dh, {
         locked: count === 0,
         count: count > 0 ? count : null,
         glow: count > 0 ? 0.6 : 0,
       });
+      // Owned / status above the card so it never crowds Close (name + rarity stay below)
+      ctx.fillStyle = "#ccc";
+      ctx.font = "14px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(count > 0 ? ("Owned ×" + count + (count >= MAX_COPIES ? " · MAX (out of the pull pool)" : "")) : "Not yet collected", W / 2, dy - 20);
       ctx.fillStyle = "#fff";
       ctx.font = "bold 28px sans-serif";
-      ctx.textAlign = "center";
       ctx.fillText(count > 0 ? babe.name : "???", W / 2, dy + dh + 36);
       ctx.fillStyle = rar.color;
       ctx.font = "bold 16px sans-serif";
       ctx.fillText(rar.label, W / 2, dy + dh + 60);
-      ctx.fillStyle = "#ccc";
-      ctx.font = "14px sans-serif";
-      ctx.fillText(count > 0 ? ("Owned ×" + count + (count >= MAX_COPIES ? " · MAX (out of the pull pool)" : "")) : "Not yet collected", W / 2, dy + dh + 84);
       ctx.fillStyle = "rgba(255,255,255,0.2)";
       roundRect(W / 2 - 50, H - 90, 100, 30, 8);
       ctx.fill();

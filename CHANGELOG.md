@@ -28,6 +28,8 @@ No build step. Classic `<script>` tags (not ES modules) so offline `file://` kee
 Script load order (do not reorder): boot → audio → babes → input → cards → level → game → boss → update → ui → main.
 
 ## Recent changes
+- **Detail Owned above card (menux2):** Babe-detail overlay puts “Owned ×N” / “Not yet collected” above the card (centered, `dy - 20`) so it no longer overlaps Close; name + rarity stay below. Cache `?v=menux2`.
+
 - **Gallery Close vs X (menux1):** Babe-detail Close moved above the footer X link (`H-90` vs X at `H-42`); while a detail is open, X is hidden and not hit-tested so Close taps no longer open X. Cache `?v=menux1`.
 
 - **X link (xlink1):** Tappable `X · @Saltybro333` on title, beat-game ending, and gallery/Menu (pause). Opens https://x.com/Saltybro333. Cache `?v=xlink1`.
