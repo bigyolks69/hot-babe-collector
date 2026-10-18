@@ -575,7 +575,16 @@ function handleGalleryClick(sx, sy) {
     else if (hit(L.cancelBtn)) cancelResetConfirm();
     return;
   }
-  if (hitXLink(sx, sy, "gallery")) { openXProfile(); return; }
+  // Detail close must beat gallery X link (same footer strip); skip X while overlay open
+  if (gallery.selected) {
+    if (sx >= W / 2 - 40 && sx <= W / 2 + 40 && sy >= H - 88 && sy <= H - 60) {
+      gallery.selected = null;
+      return;
+    }
+  } else if (hitXLink(sx, sy, "gallery")) {
+    openXProfile();
+    return;
+  }
   // Gallery "Reset" / "Refresh Cache" buttons
   const rb = galleryResetBtn();
   if (sx >= rb.x && sx <= rb.x + rb.w && sy >= rb.y && sy <= rb.y + rb.h) {
@@ -616,13 +625,6 @@ function handleGalleryClick(sx, sy) {
   if (sx >= W - 60 && sx <= W - 10 && sy >= H - 42 && sy <= H - 14) {
     gallery.scroll += 160;
     return;
-  }
-  // Detail close
-  if (gallery.selected) {
-    if (sx >= W / 2 - 40 && sx <= W / 2 + 40 && sy >= H - 50 && sy <= H - 22) {
-      gallery.selected = null;
-      return;
-    }
   }
   // Grid hit
   const list = galleryFilteredList();
@@ -721,7 +723,7 @@ function drawCollection() {
     ctx.fillText(label, bx + 7, by + 12);
     ctx.textAlign = "center";
   }
-  drawXLink("gallery");
+  if (!gallery.selected) drawXLink("gallery");
   ctx.font = "11px sans-serif";
   ctx.fillStyle = "#888";
   ctx.fillText("Reset collection clears babes  ·  C / Esc close  ·  Wheel / arrows scroll  ·  1–6 filters", W / 2, H - 10);
@@ -821,11 +823,11 @@ function drawCollection() {
       ctx.font = "14px sans-serif";
       ctx.fillText(count > 0 ? ("Owned ×" + count + (count >= MAX_COPIES ? " · MAX (out of the pull pool)" : "")) : "Not yet collected", W / 2, dy + dh + 84);
       ctx.fillStyle = "rgba(255,255,255,0.2)";
-      roundRect(W / 2 - 50, H - 52, 100, 30, 8);
+      roundRect(W / 2 - 50, H - 90, 100, 30, 8);
       ctx.fill();
       ctx.fillStyle = "#fff";
       ctx.font = "bold 13px sans-serif";
-      ctx.fillText("Close", W / 2, H - 32);
+      ctx.fillText("Close", W / 2, H - 70);
     }
   }
 }

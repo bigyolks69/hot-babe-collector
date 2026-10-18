@@ -28,6 +28,8 @@ No build step. Classic `<script>` tags (not ES modules) so offline `file://` kee
 Script load order (do not reorder): boot → audio → babes → input → cards → level → game → boss → update → ui → main.
 
 ## Recent changes
+- **Gallery Close vs X (menux1):** Babe-detail Close moved above the footer X link (`H-90` vs X at `H-42`); while a detail is open, X is hidden and not hit-tested so Close taps no longer open X. Cache `?v=menux1`.
+
 - **X link (xlink1):** Tappable `X · @Saltybro333` on title, beat-game ending, and gallery/Menu (pause). Opens https://x.com/Saltybro333. Cache `?v=xlink1`.
 
 - **Repo home:** game now lives at [saltybro333/hot-babe-collector](https://github.com/saltybro333/hot-babe-collector); live Pages [saltybro333.github.io/hot-babe-collector](https://saltybro333.github.io/hot-babe-collector/). Old `bigyolks69` remote kept as `bigyolks69` for reference.
